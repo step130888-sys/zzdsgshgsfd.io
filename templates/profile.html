@@ -13,11 +13,30 @@
         <div class="flex flex-col md:flex-row md:items-start justify-between gap-6 relative z-10">
             <div class="flex items-center space-x-6">
                 <!-- Cosmic Avatar with radiant glowing border & star motif -->
-                <div class="relative">
-                    <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-[#3B0764] via-[#6D28D9] to-[#0284C7] text-white flex items-center justify-center font-black text-3xl shadow-xl shadow-violet-950/60 border-2 border-violet-400/40 relative">
-                        <span class="holo-text">{{ profile_user.name[0] }}</span>
+                <div class="relative group">
+                    <div class="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-gradient-to-tr from-[#3B0764] via-[#6D28D9] to-[#0284C7] text-white flex items-center justify-center font-black text-3xl shadow-xl shadow-violet-950/60 border-2 border-violet-400/40 relative overflow-hidden">
+                        {% if profile_user.avatar_url %}
+                        <img id="profileUserAvatarImg" src="{{ profile_user.avatar_url }}" alt="{{ profile_user.name }}" class="w-full h-full object-cover">
+                        {% else %}
+                        <span id="profileUserAvatarFallback" class="holo-text">{{ profile_user.name[0] }}</span>
+                        {% endif %}
                     </div>
-                    <span class="absolute -bottom-2 -right-2 text-xl select-none filter drop-shadow-[0_0_8px_rgba(167,139,250,0.8)]">✦</span>
+                    <span class="absolute -bottom-2 -left-2 text-xl select-none filter drop-shadow-[0_0_8px_rgba(167,139,250,0.8)]">✦</span>
+
+                    <!-- Avatar edit trigger: Self or Admin Level 4 -->
+                    {% if profile_user.id == current_user.id %}
+                    <button type="button" onclick="openAvatarModal()"
+                            class="absolute -bottom-2 -right-2 p-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-900/60 border border-violet-400/60 transition-all hover:scale-110 flex items-center justify-center"
+                            title="Изменить фото моего профиля">
+                        <span class="text-xs">📷</span>
+                    </button>
+                    {% elif current_user.access_level >= 4 %}
+                    <button type="button" onclick="openAvatarModal()"
+                            class="absolute -bottom-2 -right-2 p-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/60 border border-amber-400/60 transition-all hover:scale-110 flex items-center justify-center"
+                            title="⚡ Принудительно изменить фото пользователя (Администратор 4 ур.)">
+                        <span class="text-xs">⚡📷</span>
+                    </button>
+                    {% endif %}
                 </div>
 
                 <div>
@@ -76,14 +95,26 @@
                     </div>
                 </div>
 
-                {% if current_user.access_level == 4 %}
-                <div>
-                    <button onclick="document.getElementById('editProfileModal').classList.remove('hidden')"
-                            class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.15)] transition-all">
-                        <span>✏️ Редактировать (Админ)</span>
+                <div class="flex flex-wrap items-center gap-2 justify-start md:justify-end">
+                    {% if profile_user.id == current_user.id %}
+                    <button type="button" onclick="openAvatarModal()"
+                            class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/40 shadow-[0_0_10px_rgba(139,92,246,0.2)] transition-all hover:scale-105">
+                        <span>📷 Сменить фото</span>
                     </button>
+                    {% endif %}
+
+                    {% if current_user.access_level == 4 %}
+                    <button type="button" onclick="openAvatarModal()"
+                            class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.2)] transition-all hover:scale-105"
+                            title="Принудительно изменить фото участника (Администратор 4 уровня)">
+                        <span>⚡📷 Сменить фото (Админ)</span>
+                    </button>
+                    <button type="button" onclick="document.getElementById('editProfileModal').classList.remove('hidden')"
+                            class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 shadow-md transition-all">
+                        <span>✏️ Редактировать</span>
+                    </button>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
 
@@ -398,6 +429,112 @@
     </div>
 </div>
 
+<!-- Modal: Dedicated Avatar Change (Self or Admin Level 4 Forced) -->
+{% if profile_user.id == current_user.id or current_user.access_level >= 4 %}
+<div id="avatarModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass rounded-3xl max-w-md w-full p-6 shadow-2xl border border-violet-500/30 bg-[#0B0F24] space-y-5 relative">
+        <div class="flex items-center justify-between pb-3.5 border-b border-violet-500/20">
+            <div class="flex items-center space-x-2.5">
+                {% if profile_user.id == current_user.id %}
+                <span class="text-xl">📷</span>
+                <div>
+                    <h3 class="font-black text-white text-base leading-tight">Фото профиля</h3>
+                    <p class="text-[11px] text-violet-300 font-semibold">Загрузите или обновите аватар</p>
+                </div>
+                {% else %}
+                <span class="text-xl">⚡</span>
+                <div>
+                    <h3 class="font-black text-amber-300 text-base leading-tight">Принудительная смена фото</h3>
+                    <p class="text-[11px] text-slate-300 font-semibold">Действие Администратора (Ур. 4) для: <b class="text-white">{{ profile_user.name }}</b></p>
+                </div>
+                {% endif %}
+            </div>
+            <button type="button" onclick="closeAvatarModal()" class="text-slate-400 hover:text-white font-bold transition-colors">✕</button>
+        </div>
+
+        <form id="avatarUploadForm" action="/profile/{{ profile_user.id }}/avatar" method="POST" enctype="multipart/form-data" class="space-y-4">
+            <input type="hidden" name="redirect_to" value="/profile/{{ profile_user.id }}">
+
+            <!-- Live Avatar Preview -->
+            <div class="flex flex-col items-center justify-center py-2">
+                <div class="relative mb-2">
+                    <div class="w-24 h-24 rounded-2xl bg-gradient-to-tr from-[#3B0764] via-[#6D28D9] to-[#0284C7] text-white flex items-center justify-center font-black text-3xl shadow-xl shadow-violet-950/60 border-2 border-violet-400/50 overflow-hidden">
+                        <img id="avatarPreviewImg" src="{{ profile_user.avatar_url or '' }}" alt="Превью" class="w-full h-full object-cover {% if not profile_user.avatar_url %}hidden{% endif %}">
+                        <span id="avatarPreviewFallback" class="holo-text {% if profile_user.avatar_url %}hidden{% endif %}">{{ profile_user.name[0] }}</span>
+                    </div>
+                    <span class="absolute -bottom-2 -right-2 text-base text-cyan-300 select-none drop-shadow-[0_0_6px_rgba(56,189,248,0.9)]">✦</span>
+                </div>
+                <span class="text-[11px] text-slate-400 font-semibold">Предпросмотр фото</span>
+            </div>
+
+            <!-- Upload Options -->
+            <div class="space-y-3">
+                <!-- Option 1: File from Computer / Phone -->
+                <div>
+                    <label class="block text-xs font-black uppercase text-violet-300 mb-1.5 flex items-center justify-between">
+                        <span>Загрузить файл с устройства</span>
+                        <span class="text-[10px] text-slate-400 font-normal">PNG, JPG, WEBP, GIF</span>
+                    </label>
+                    <label class="flex flex-col items-center justify-center w-full px-4 py-4 border-2 border-dashed border-violet-500/30 hover:border-cyan-400/60 rounded-2xl cursor-pointer bg-[#060814]/70 hover:bg-violet-950/20 transition-all group">
+                        <span class="text-xl mb-1 group-hover:scale-110 transition-transform">📁</span>
+                        <span id="avatarFileNameLabel" class="text-xs font-bold text-slate-300 group-hover:text-cyan-300 transition-colors text-center">
+                            Нажмите для выбора фото с устройства
+                        </span>
+                        <span id="avatarFileSizeLabel" class="text-[10px] text-slate-500 mt-0.5 font-medium">Максимум 50 МБ</span>
+                        <input type="file" name="avatar_file" id="avatarFileInput" accept="image/*" class="hidden" onchange="handleAvatarFileSelect(this)">
+                    </label>
+                </div>
+
+                <!-- Divider -->
+                <div class="relative flex items-center justify-center my-1.5">
+                    <div class="border-t border-violet-500/20 w-full"></div>
+                    <span class="bg-[#0B0F24] px-3 text-[10px] uppercase font-bold text-slate-500">или</span>
+                    <div class="border-t border-violet-500/20 w-full"></div>
+                </div>
+
+                <!-- Option 2: Image URL -->
+                <div>
+                    <label class="block text-xs font-black uppercase text-slate-300 mb-1">Ссылка на фото (URL в интернете)</label>
+                    <input type="url" name="avatar_url" id="avatarUrlInput"
+                           placeholder="https://example.com/photo.jpg"
+                           value="{% if profile_user.avatar_url and profile_user.avatar_url.startswith('http') %}{{ profile_user.avatar_url }}{% endif %}"
+                           oninput="handleAvatarUrlInput(this)"
+                           class="w-full text-xs px-3.5 py-2.5 bg-[#060814] border border-violet-500/30 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20">
+                </div>
+            </div>
+
+            <!-- Modal Bottom Actions -->
+            <div class="flex items-center justify-between pt-3 border-t border-violet-500/20">
+                {% if profile_user.avatar_url %}
+                <button type="submit" name="remove_avatar" value="1"
+                        onclick="return confirm('Удалить фото профиля и вернуться к инициалам по умолчанию?');"
+                        class="text-xs font-bold text-rose-400 hover:text-rose-300 hover:underline flex items-center space-x-1 transition-colors">
+                    <span>🗑️ Удалить фото</span>
+                </button>
+                {% else %}
+                <div></div>
+                {% endif %}
+
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="closeAvatarModal()"
+                            class="px-3.5 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl transition-colors">
+                        Отмена
+                    </button>
+                    <button type="submit"
+                            class="px-5 py-2 text-xs font-black rounded-xl shadow-md transition-all {% if profile_user.id == current_user.id %}btn-neon text-white{% else %}bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 hover:scale-105{% endif %}">
+                        {% if profile_user.id == current_user.id %}
+                        💾 Сохранить моё фото
+                        {% else %}
+                        ⚡ Принудительно установить
+                        {% endif %}
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <!-- Modal: Edit User (Admin Level 4) -->
 {% if current_user.access_level == 4 %}
 <div id="editProfileModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -410,7 +547,7 @@
             <button onclick="document.getElementById('editProfileModal').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold transition-colors">✕</button>
         </div>
 
-        <form action="/profile/{{ profile_user.id }}/edit" method="POST" class="mt-4 space-y-4">
+        <form action="/profile/{{ profile_user.id }}/edit" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4">
             <!-- ФИО -->
             <div>
                 <label class="block text-xs font-bold uppercase text-slate-300 mb-1">Фамилия и Имя *</label>
@@ -464,6 +601,25 @@
                         <option value="4" {% if profile_user.access_level == 4 %}selected{% endif %}>Уровень 4 (Админ)</option>
                     </select>
                     {% endif %}
+                </div>
+            </div>
+
+            <!-- Фото профиля для администратора -->
+            <div class="border-t border-violet-500/15 pt-3">
+                <label class="block text-xs font-bold uppercase text-amber-300 mb-1 flex items-center justify-between">
+                    <span>⚡ Фото профиля (Админ 4 ур.)</span>
+                    {% if profile_user.avatar_url %}
+                    <label class="text-[11px] font-bold text-rose-400 flex items-center space-x-1 cursor-pointer">
+                        <input type="checkbox" name="remove_avatar" value="1" class="rounded border-rose-500/40 text-rose-500 focus:ring-0">
+                        <span>Удалить фото</span>
+                    </label>
+                    {% endif %}
+                </label>
+                <div class="space-y-2">
+                    <input type="file" name="avatar_file" accept="image/*"
+                           class="w-full text-xs px-3 py-1.5 bg-[#060814] border border-violet-500/30 rounded-xl text-slate-300 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-violet-600 file:text-white cursor-pointer">
+                    <input type="url" name="avatar_url" placeholder="Или прямая ссылка на фото (https://...)" value="{% if profile_user.avatar_url and profile_user.avatar_url.startswith('http') %}{{ profile_user.avatar_url }}{% endif %}"
+                           class="w-full text-xs px-3 py-2 bg-[#060814] border border-violet-500/30 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400">
                 </div>
             </div>
 
@@ -707,6 +863,63 @@ function validateSubmitForm(form, taskId) {
         return false;
     }
     return true;
+}
+
+function openAvatarModal() {
+    const modal = document.getElementById('avatarModal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeAvatarModal() {
+    const modal = document.getElementById('avatarModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function handleAvatarFileSelect(input) {
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const fileNameLabel = document.getElementById('avatarFileNameLabel');
+        const fileSizeLabel = document.getElementById('avatarFileSizeLabel');
+        const previewImg = document.getElementById('avatarPreviewImg');
+        const previewFallback = document.getElementById('avatarPreviewFallback');
+        const urlInput = document.getElementById('avatarUrlInput');
+
+        if (fileNameLabel) fileNameLabel.textContent = '✅ ' + file.name;
+        if (fileSizeLabel) fileSizeLabel.textContent = 'Размер: ' + (file.size / (1024 * 1024)).toFixed(2) + ' МБ';
+        if (urlInput) urlInput.value = '';
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            if (previewImg) {
+                previewImg.src = e.target.result;
+                previewImg.classList.remove('hidden');
+            }
+            if (previewFallback) {
+                previewFallback.classList.add('hidden');
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function handleAvatarUrlInput(input) {
+    const val = input.value.trim();
+    const previewImg = document.getElementById('avatarPreviewImg');
+    const previewFallback = document.getElementById('avatarPreviewFallback');
+    const fileInput = document.getElementById('avatarFileInput');
+    const fileNameLabel = document.getElementById('avatarFileNameLabel');
+
+    if (val) {
+        if (fileInput) fileInput.value = '';
+        if (fileNameLabel) fileNameLabel.textContent = 'Нажмите для выбора фото с устройства';
+        if (previewImg) {
+            previewImg.src = val;
+            previewImg.classList.remove('hidden');
+        }
+        if (previewFallback) {
+            previewFallback.classList.add('hidden');
+        }
+    }
 }
 </script>
 {% endblock %}

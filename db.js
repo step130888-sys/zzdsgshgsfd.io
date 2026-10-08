@@ -58,9 +58,16 @@ async function initDb() {
       access_level INTEGER NOT NULL DEFAULT 1,
       is_approved BOOLEAN NOT NULL DEFAULT 1,
       completed_tasks INTEGER NOT NULL DEFAULT 0,
-      average_score FLOAT NOT NULL DEFAULT 0.0
+      average_score FLOAT NOT NULL DEFAULT 0.0,
+      avatar_url VARCHAR(500)
     )
   `);
+
+  try {
+    await run('ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500)');
+  } catch (e) {
+    // Column already exists or table was just created with it
+  }
 
   await run(`
     CREATE TABLE IF NOT EXISTS tasks (

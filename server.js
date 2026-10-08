@@ -320,13 +320,15 @@ app.post('/admin/users/:id/delete', requireAuth, requireLevel(4, 'Удалять
   res.redirect(`/admin/users?msg=${msg}`);
 });
 
-app.post('/admin/users/:id/inline-edit', requireAuth, requireLevel(4, 'Недостаточно прав. Только администраторы (4 уровень) могут редактировать участников.'), async (req, res) => {
+app.post('/admin/users/:id/inline-edit', requireAuth, requireLevel(4, 'Недостаточно прав. Только администраторы (4 уровень) могут редактировать участников.'), upload.single('avatar_file'), async (req, res) => {
   const profileId = parseInt(req.params.id, 10);
   const name = (req.body.name || '').trim();
   const password = (req.body.password || '').trim();
   const role = (req.body.role || '').trim();
   const accessLevel = req.body.access_level !== undefined ? parseInt(req.body.access_level, 10) : null;
   const redirectTo = req.body.redirect_to || '/admin/users';
+  const avatarUrlInput = (req.body.avatar_url || '').trim();
+  const removeAvatar = req.body.remove_avatar === '1' || req.body.remove_avatar === 'true';
 
   const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
   if (!targetUser) {
@@ -346,9 +348,32 @@ app.post('/admin/users/:id/inline-edit', requireAuth, requireLevel(4, 'Недо�
     }
   }
 
+  if (removeAvatar) {
+    if (targetUser.avatar_url && targetUser.avatar_url.startsWith('/uploads/avatars/')) {
+      try {
+        const oldFilePath = path.join(__dirname, targetUser.avatar_url.replace(/^\//, ''));
+        if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+      } catch (e) {}
+    }
+    targetUser.avatar_url = null;
+  } else if (req.file && req.file.buffer && req.file.buffer.length > 0) {
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+    const rawExt = path.extname(req.file.originalname).toLowerCase();
+    const ext = allowedExts.includes(rawExt) ? rawExt : '.png';
+    const filename = `avatar_${profileId}_${Date.now()}${ext}`;
+    const avatarsDir = path.join(__dirname, 'uploads', 'avatars');
+    if (!fs.existsSync(avatarsDir)) {
+      fs.mkdirSync(avatarsDir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(avatarsDir, filename), req.file.buffer);
+    targetUser.avatar_url = `/uploads/avatars/${filename}`;
+  } else if (avatarUrlInput) {
+    targetUser.avatar_url = avatarUrlInput;
+  }
+
   await db.run(
-    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ? WHERE id = ?',
-    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, profileId]
+    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ?, avatar_url = ? WHERE id = ?',
+    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, targetUser.avatar_url, profileId]
   );
 
   const msg = encodeURIComponent(`Данные участника ${targetUser.name} успешно обновлены!`);
@@ -389,12 +414,88 @@ app.get('/profile/:id', requireAuth, async (req, res) => {
   });
 });
 
-app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточно прав. Только администраторы (4 уровень) могут редактировать профили участников.'), async (req, res) => {
+app.post('/profile/:id/avatar', requireAuth, upload.single('avatar_file'), async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+  const targetRedirect = req.body.redirect_to && req.body.redirect_to.trim() ? req.body.redirect_to.trim() : `/profile/${profileId}`;
+
+  const isSelf = (req.user.id === profileId);
+  const isAdmin = (req.user.access_level >= 4);
+
+  if (!isSelf && !isAdmin) {
+    const err = encodeURIComponent('Недостаточно прав. Принудительно менять фото чужого профиля может только администратор 4-го уровня.');
+    return res.redirect(`${targetRedirect}?error=${err}`);
+  }
+
+  const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
+  if (!targetUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  // Handle remove avatar
+  if (req.body.remove_avatar === '1' || req.body.remove_avatar === 'true') {
+    if (targetUser.avatar_url && targetUser.avatar_url.startsWith('/uploads/avatars/')) {
+      try {
+        const oldFilePath = path.join(__dirname, targetUser.avatar_url.replace(/^\//, ''));
+        if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+      } catch (e) {
+        console.error('Error deleting old avatar:', e);
+      }
+    }
+    await db.run('UPDATE users SET avatar_url = NULL WHERE id = ?', [profileId]);
+    const msg = encodeURIComponent(
+      isSelf ? 'Ваше фото профиля успешно удалено.' : `Фото профиля участника «${targetUser.name}» удалено администратором.`
+    );
+    return res.redirect(`${targetRedirect}?msg=${msg}`);
+  }
+
+  let newAvatarUrl = null;
+
+  // Handle uploaded file
+  if (req.file && req.file.buffer && req.file.buffer.length > 0) {
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+    const rawExt = path.extname(req.file.originalname).toLowerCase();
+    const ext = allowedExts.includes(rawExt) ? rawExt : '.png';
+    const filename = `avatar_${profileId}_${Date.now()}${ext}`;
+    const avatarsDir = path.join(__dirname, 'uploads', 'avatars');
+    if (!fs.existsSync(avatarsDir)) {
+      fs.mkdirSync(avatarsDir, { recursive: true });
+    }
+    if (targetUser.avatar_url && targetUser.avatar_url.startsWith('/uploads/avatars/')) {
+      try {
+        const oldFilePath = path.join(__dirname, targetUser.avatar_url.replace(/^\//, ''));
+        if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+      } catch (e) {}
+    }
+    fs.writeFileSync(path.join(avatarsDir, filename), req.file.buffer);
+    newAvatarUrl = `/uploads/avatars/${filename}`;
+  } else if (req.body.avatar_url && req.body.avatar_url.trim()) {
+    newAvatarUrl = req.body.avatar_url.trim();
+  }
+
+  if (!newAvatarUrl) {
+    const err = encodeURIComponent('Пожалуйста, выберите файл изображения или вставьте ссылку на фото.');
+    return res.redirect(`${targetRedirect}?error=${err}`);
+  }
+
+  await db.run('UPDATE users SET avatar_url = ? WHERE id = ?', [newAvatarUrl, profileId]);
+
+  const msg = encodeURIComponent(
+    isSelf
+      ? 'Ваше фото профиля успешно обновлено!'
+      : `Фото профиля участника «${targetUser.name}» успешно изменено администратором (4 уровень)!`
+  );
+  res.redirect(`${targetRedirect}?msg=${msg}`);
+});
+
+app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточно прав. Только администраторы (4 уровень) могут редактировать профили участников.'), upload.single('avatar_file'), async (req, res) => {
   const profileId = parseInt(req.params.id, 10);
   const name = (req.body.name || '').trim();
   const password = (req.body.password || '').trim();
   const role = (req.body.role || '').trim();
   const accessLevel = req.body.access_level !== undefined ? parseInt(req.body.access_level, 10) : null;
+  const avatarUrlInput = (req.body.avatar_url || '').trim();
+  const removeAvatar = req.body.remove_avatar === '1' || req.body.remove_avatar === 'true';
 
   const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
   if (!targetUser) {
@@ -414,12 +515,42 @@ app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточ
     }
   }
 
+  // Handle avatar
+  if (removeAvatar) {
+    if (targetUser.avatar_url && targetUser.avatar_url.startsWith('/uploads/avatars/')) {
+      try {
+        const oldFilePath = path.join(__dirname, targetUser.avatar_url.replace(/^\//, ''));
+        if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+      } catch (e) {}
+    }
+    targetUser.avatar_url = null;
+  } else if (req.file && req.file.buffer && req.file.buffer.length > 0) {
+    const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+    const rawExt = path.extname(req.file.originalname).toLowerCase();
+    const ext = allowedExts.includes(rawExt) ? rawExt : '.png';
+    const filename = `avatar_${profileId}_${Date.now()}${ext}`;
+    const avatarsDir = path.join(__dirname, 'uploads', 'avatars');
+    if (!fs.existsSync(avatarsDir)) {
+      fs.mkdirSync(avatarsDir, { recursive: true });
+    }
+    if (targetUser.avatar_url && targetUser.avatar_url.startsWith('/uploads/avatars/')) {
+      try {
+        const oldFilePath = path.join(__dirname, targetUser.avatar_url.replace(/^\//, ''));
+        if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+      } catch (e) {}
+    }
+    fs.writeFileSync(path.join(avatarsDir, filename), req.file.buffer);
+    targetUser.avatar_url = `/uploads/avatars/${filename}`;
+  } else if (avatarUrlInput) {
+    targetUser.avatar_url = avatarUrlInput;
+  }
+
   await db.run(
-    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ? WHERE id = ?',
-    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, profileId]
+    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ?, avatar_url = ? WHERE id = ?',
+    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, targetUser.avatar_url, profileId]
   );
 
-  const msg = encodeURIComponent(`Данные профиля ${targetUser.name} успешно обновлены!`);
+  const msg = encodeURIComponent(`Данные профиля «${targetUser.name}» успешно обновлены!`);
   res.redirect(`/profile/${profileId}?msg=${msg}`);
 });
 
@@ -607,6 +738,7 @@ app.get('/api/task/:id/comments', requireAuth, async (req, res) => {
       user_name: u ? u.name : 'Участник',
       user_role: u ? u.role : '',
       user_level: u ? u.access_level : 1,
+      user_avatar: u ? u.avatar_url : null,
       message: c.message,
       created_at: c.created_at ? c.created_at.strftime('%d.%m %H:%M') : '',
       is_author_assignee: Boolean(task.assigned_to_id === c.user_id),
@@ -649,6 +781,7 @@ app.post('/api/task/:id/comments', requireAuth, async (req, res) => {
       user_name: req.user.name,
       user_role: req.user.role,
       user_level: req.user.access_level,
+      user_avatar: req.user.avatar_url || null,
       message,
       created_at: nowIso.strftime('%d.%m %H:%M'),
       is_author_assignee: Boolean(task.assigned_to_id === req.user.id),

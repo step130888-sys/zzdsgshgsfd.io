@@ -226,9 +226,20 @@
                         class="user-view-row hover:bg-violet-950/30 transition-all cursor-pointer group select-none"
                         title="Нажмите, чтобы открыть или закрыть панель редактирования">
                         <td class="py-3.5 px-6 font-semibold text-white">
-                            <span class="text-slate-500 font-mono text-[11px] font-bold">#{{ u.id }}</span>
-                            <span class="hover:text-cyan-300 font-black ml-1 transition-colors">{{ u.name }}</span>
-                            <span class="text-[10px] text-cyan-300 font-bold ml-1 opacity-0 group-hover:opacity-100 transition-opacity">✎ редактировать</span>
+                            <div class="flex items-center space-x-3">
+                                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 to-cyan-500 overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-xs text-white border border-violet-400/40 shadow-sm">
+                                    {% if u.avatar_url %}
+                                    <img src="{{ u.avatar_url }}" alt="{{ u.name }}" class="w-full h-full object-cover">
+                                    {% else %}
+                                    <span>{{ u.name[0] }}</span>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 font-mono text-[11px] font-bold">#{{ u.id }}</span>
+                                    <a href="/profile/{{ u.id }}" onclick="event.stopPropagation()" class="hover:text-cyan-300 font-black ml-1 transition-colors" title="Открыть профиль">{{ u.name }}</a>
+                                    <span class="text-[10px] text-cyan-300 font-bold ml-1 opacity-0 group-hover:opacity-100 transition-opacity">✎</span>
+                                </div>
+                            </div>
                         </td>
 
                         <td class="py-3.5 px-6 font-mono font-bold text-slate-300">
@@ -268,11 +279,14 @@
                         </td>
 
                         <td class="py-3.5 px-6 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                            <a href="/profile/{{ u.id }}" class="text-violet-300 hover:text-white bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 px-2.5 py-1 rounded-xl text-xs font-black transition-all mr-1.5 inline-block" title="Открыть профиль и фото">
+                                📷 Профиль
+                            </a>
                             {% if u.username == 'stepyn' %}
                             <!-- Protected Root Admin -->
                             <span class="inline-flex items-center space-x-1 px-3 py-1 rounded-full bg-[#060814] text-amber-300 border border-amber-500/40 text-[10px] font-black shadow-[0_0_10px_rgba(245,158,11,0.2)] tracking-wide">
                                 <span>🔒</span>
-                                <span>ROOT (НЕПРИКОСНОВЕНЕН)</span>
+                                <span>ROOT</span>
                             </span>
                             {% else %}
                             <button type="button" onclick="event.stopPropagation(); toggleInlineEdit('{{ u.id }}')" class="text-cyan-300 hover:text-white bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 px-3 py-1 rounded-xl text-xs font-black transition-all mr-1.5 inline-block">
@@ -281,7 +295,7 @@
                             <!-- Remove button -->
                             <form action="/admin/users/{{ u.id }}/delete" method="POST" onsubmit="return confirm('Удалить профиль {{ u.name }} (@{{ u.username }})? Его задачи станут свободными.');" class="inline-block">
                                 <button type="submit" class="text-rose-400 hover:text-white hover:bg-rose-600/30 border border-rose-500/30 px-3 py-1 rounded-xl text-xs font-black transition-all">
-                                    🗑️ Удалить
+                                    🗑️
                                 </button>
                             </form>
                             {% endif %}
@@ -291,32 +305,32 @@
                     <!-- Строка инлайн-редактирования -->
                     <tr id="row-edit-{{ u.id }}" data-edit-id="{{ u.id }}" class="user-edit-row hidden bg-[#060814]/95 border-y-2 border-violet-500/40">
                         <td colspan="7" class="p-5">
-                            <form action="/admin/users/{{ u.id }}/inline-edit" method="POST" class="flex flex-wrap items-end gap-3.5" onclick="event.stopPropagation()">
+                            <form action="/admin/users/{{ u.id }}/inline-edit" method="POST" enctype="multipart/form-data" class="flex flex-wrap items-end gap-3.5" onclick="event.stopPropagation()">
                                 <input type="hidden" name="redirect_to" value="/admin/users">
 
                                 <!-- Имя и Фамилия -->
-                                <div class="flex-grow min-w-[200px]">
+                                <div class="flex-grow min-w-[180px]">
                                     <label class="block text-[11px] font-black uppercase text-violet-300 mb-1">Имя и Фамилия *</label>
                                     <input type="text" name="name" value="{{ u.name }}" required
                                            class="w-full text-xs font-bold px-3 py-2 bg-[#0B0F24] border border-violet-500/30 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 shadow-sm">
                                 </div>
 
                                 <!-- Логин (только инфо) -->
-                                <div class="w-32">
+                                <div class="w-28">
                                     <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Логин</label>
                                     <input type="text" value="{{ u.username or 'user_' ~ u.id }}" disabled
                                            class="w-full text-xs font-mono font-bold px-3 py-2 bg-[#0B0F24]/60 border border-violet-500/20 rounded-xl text-slate-500">
                                 </div>
 
                                 <!-- Новый пароль -->
-                                <div class="w-48">
+                                <div class="w-36">
                                     <label class="block text-[11px] font-black uppercase text-violet-300 mb-1">Новый пароль</label>
                                     <input type="password" name="password" placeholder="Оставьте пустым..."
                                            class="w-full text-xs px-3 py-2 bg-[#0B0F24] border border-violet-500/30 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 shadow-sm">
                                 </div>
 
                                 <!-- Цех / Направление -->
-                                <div class="w-36">
+                                <div class="w-32">
                                     <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Цех</label>
                                     <select name="role" class="w-full text-xs font-bold px-3 py-2 bg-[#0B0F24] border border-violet-500/30 text-white rounded-xl focus:ring-2 focus:ring-cyan-500">
                                         <option value="Фото" {% if u.role == 'Фото' %}selected{% endif %}>Фото</option>
@@ -330,7 +344,7 @@
                                 </div>
 
                                 <!-- Уровень доступа -->
-                                <div class="w-28">
+                                <div class="w-24">
                                     <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Уровень</label>
                                     {% if u.username == 'stepyn' %}
                                     <input type="text" value="Ур. 4 (Root)" disabled class="w-full text-xs font-bold px-2 py-2 bg-[#0B0F24]/60 border border-violet-500/20 rounded-xl text-slate-500">
@@ -343,6 +357,20 @@
                                         <option value="4" {% if u.access_level == 4 %}selected{% endif %}>Ур. 4</option>
                                     </select>
                                     {% endif %}
+                                </div>
+
+                                <!-- Фото профиля (Загрузка файла) -->
+                                <div class="w-48">
+                                    <label class="block text-[11px] font-black uppercase text-amber-300 mb-1 flex items-center justify-between">
+                                        <span>⚡ Фото (файл)</span>
+                                        {% if u.avatar_url %}
+                                        <label class="text-[9px] text-rose-400 font-bold cursor-pointer">
+                                            <input type="checkbox" name="remove_avatar" value="1"> Удалить
+                                        </label>
+                                        {% endif %}
+                                    </label>
+                                    <input type="file" name="avatar_file" accept="image/*"
+                                           class="w-full text-[11px] px-2 py-1.5 bg-[#0B0F24] border border-violet-500/30 rounded-xl text-slate-300 file:mr-1 file:py-0.5 file:px-2 file:rounded-lg file:border-0 file:text-[9px] file:font-black file:bg-violet-600 file:text-white cursor-pointer">
                                 </div>
 
                                 <!-- Кнопки сохранения и отмены -->

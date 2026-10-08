@@ -390,6 +390,13 @@
                         <div class="flex flex-col {% if is_me %}items-end{% else %}items-start{% endif %}">
                             <!-- Author & Time info -->
                             <div class="flex items-center space-x-1.5 mb-1 px-1">
+                                <div class="w-5 h-5 rounded-full overflow-hidden flex-shrink-0 bg-violet-600 flex items-center justify-center text-[9px] font-black text-white border border-violet-400/40">
+                                    {% if comment.user.avatar_url %}
+                                    <img src="{{ comment.user.avatar_url }}" alt="{{ comment.user.name }}" class="w-full h-full object-cover">
+                                    {% else %}
+                                    <span>{{ comment.user.name[0] }}</span>
+                                    {% endif %}
+                                </div>
                                 <span class="text-[11px] font-black {% if is_me %}text-cyan-300{% else %}text-slate-300{% endif %}">
                                     {{ comment.user.name }}
                                 </span>
@@ -684,9 +691,14 @@
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#039;');
 
+                const avatarMarkup = c.user_avatar
+                    ? `<div class="w-5 h-5 rounded-full overflow-hidden flex-shrink-0 border border-violet-400/40"><img src="${c.user_avatar}" alt="${c.user_name}" class="w-full h-full object-cover"></div>`
+                    : `<div class="w-5 h-5 rounded-full bg-violet-600 flex items-center justify-center text-[9px] font-black text-white border border-violet-400/40">${(c.user_name || '?')[0]}</div>`;
+
                 html += `
                     <div class="flex flex-col ${alignClass}">
                         <div class="flex items-center space-x-1.5 mb-1 px-1">
+                            ${avatarMarkup}
                             <span class="text-[11px] font-black ${nameColor}">${c.user_name}</span>
                             ${roleBadge}
                             <span class="text-[10px] text-slate-500 font-medium">${c.created_at}</span>

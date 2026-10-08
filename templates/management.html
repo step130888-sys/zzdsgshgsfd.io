@@ -591,11 +591,22 @@
                     class="member-view-row hover:bg-violet-950/30 transition-all cursor-pointer group select-none"
                     title="Нажмите, чтобы посмотреть все задачи, оценки и статус">
                     <td class="py-3 px-6 font-semibold text-white">
-                        <span class="text-slate-500 font-mono text-[11px] font-bold">#{{ member.id }}</span>
-                        <span class="hover:text-cyan-300 font-black ml-1 transition-colors">{{ member.name }}</span>
-                        <span class="text-[10px] text-cyan-300 font-bold ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            👁️ задачи ({{ member.tasks|length }}) ▾
-                        </span>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 to-cyan-500 overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-xs text-white border border-violet-400/40 shadow-sm">
+                                {% if member.avatar_url %}
+                                <img src="{{ member.avatar_url }}" alt="{{ member.name }}" class="w-full h-full object-cover">
+                                {% else %}
+                                <span>{{ member.name[0] }}</span>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <span class="text-slate-500 font-mono text-[11px] font-bold">#{{ member.id }}</span>
+                                <a href="/profile/{{ member.id }}" onclick="event.stopPropagation()" class="hover:text-cyan-300 font-black ml-1 transition-colors" title="Открыть профиль">{{ member.name }}</a>
+                                <span class="text-[10px] text-cyan-300 font-bold ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    👁️ ({{ member.tasks|length }}) ▾
+                                </span>
+                            </div>
+                        </div>
                     </td>
 
                     <td class="py-3 px-6">
@@ -643,8 +654,12 @@
                             <!-- Шапка панели участника -->
                             <div class="flex items-center justify-between pb-3.5 border-b border-violet-500/20">
                                 <div class="flex items-center space-x-3.5">
-                                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#3B0764] via-[#6D28D9] to-[#0284C7] text-white font-black flex items-center justify-center text-base shadow-md border border-violet-400/30">
+                                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#3B0764] via-[#6D28D9] to-[#0284C7] text-white font-black flex items-center justify-center text-base shadow-md border border-violet-400/30 overflow-hidden flex-shrink-0">
+                                        {% if member.avatar_url %}
+                                        <img src="{{ member.avatar_url }}" alt="{{ member.name }}" class="w-full h-full object-cover">
+                                        {% else %}
                                         {{ member.name[0] }}
+                                        {% endif %}
                                     </div>
                                     <div>
                                         <div class="font-black text-white text-sm flex items-center space-x-2">

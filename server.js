@@ -1,0 +1,1097 @@
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const multer = require('multer');
+const nunjucks = require('nunjucks');
+const path = require('path');
+const fs = require('fs');
+
+const db = require('./db');
+const { getCurrentUserMiddleware, requireAuth, requireLevel } = require('./auth');
+const gdriveService = require('./gdriveService');
+const telegramService = require('./telegramService');
+
+// Polyfills for Jinja2 template compatibility
+if (!String.prototype.startswith) {
+  String.prototype.startswith = function (prefix) {
+    return this.startsWith(prefix);
+  };
+}
+if (!String.prototype.endswith) {
+  String.prototype.endswith = function (suffix) {
+    return this.endsWith(suffix);
+  };
+}
+if (!String.prototype.strip) {
+  String.prototype.strip = function () {
+    return this.trim();
+  };
+}
+if (!String.prototype.isdigit) {
+  String.prototype.isdigit = function () {
+    return /^\d+$/.test(this.trim());
+  };
+}
+if (!String.prototype.lower) {
+  String.prototype.lower = function () {
+    return this.toLowerCase();
+  };
+}
+if (!String.prototype.upper) {
+  String.prototype.upper = function () {
+    return this.toUpperCase();
+  };
+}
+if (!Date.prototype.strftime) {
+  Date.prototype.strftime = function (fmt) {
+    const d = this.getDate().toString().padStart(2, '0');
+    const m = (this.getMonth() + 1).toString().padStart(2, '0');
+    const h = this.getHours().toString().padStart(2, '0');
+    const min = this.getMinutes().toString().padStart(2, '0');
+    return `${d}.${m} ${h}:${min}`;
+  };
+}
+if (!String.prototype.strftime) {
+  String.prototype.strftime = function (fmt) {
+    const dt = new Date(this);
+    if (isNaN(dt.getTime())) return this;
+    return dt.strftime(fmt);
+  };
+}
+
+function wrapDict(obj) {
+  return new Proxy(obj || {}, {
+    get(target, prop) {
+      if (prop === 'get') {
+        return (k, d = 0) => (target[k] !== undefined ? target[k] : d);
+      }
+      return target[prop];
+    }
+  });
+}
+
+const app = express();
+const PORT = process.env.PORT || 8000;
+
+// Setup Multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 } // 100 MB
+});
+
+// Configure Nunjucks
+const nunjucksEnv = nunjucks.configure(path.join(__dirname, 'templates'), {
+  autoescape: true,
+  express: app,
+  noCache: true
+});
+
+nunjucksEnv.addFilter('format', function (val, ...args) {
+  // Case 1: Template writes "%.1f"|format(profile_user.average_score)
+  if (typeof val === 'string' && val.includes('%')) {
+    const rawVal = args.length > 0 ? args[0] : 0;
+    const num = Number(rawVal);
+    const safeNum = isNaN(num) ? 0 : num;
+    if (val.includes('.1f')) return safeNum.toFixed(1);
+    if (val.includes('.2f')) return safeNum.toFixed(2);
+    if (val.includes('.0f') || val.includes('%d')) return Math.round(safeNum).toString();
+    return safeNum.toString();
+  }
+
+  // Case 2: Template writes profile_user.average_score|format("%.1f")
+  const num = Number(val);
+  const safeNum = isNaN(num) ? 0 : num;
+  const fmt = (args.length > 0 && args[0]) ? String(args[0]) : '';
+  if (fmt.includes('.1f')) return safeNum.toFixed(1);
+  if (fmt.includes('.2f')) return safeNum.toFixed(2);
+  if (fmt.includes('.0f') || fmt.includes('%d')) return Math.round(safeNum).toString();
+
+  if (typeof val === 'number') return safeNum.toFixed(1);
+  return val != null ? String(val) : '';
+});
+
+nunjucksEnv.addFilter('round', function (val, precision = 0) {
+  const num = Number(val);
+  if (isNaN(num)) return 0;
+  return Number(num.toFixed(precision));
+});
+
+nunjucksEnv.addFilter('selectattr', function (arr, attr, test, val) {
+  if (!Array.isArray(arr)) return [];
+  if (test === 'equalto') return arr.filter(item => item && item[attr] === val);
+  if (test === 'in') return arr.filter(item => item && val.includes(item[attr]));
+  return arr.filter(item => item && item[attr]);
+});
+
+// Middleware
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(cookieParser());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Attach current user & global template context
+app.use(getCurrentUserMiddleware);
+app.use((req, res, next) => {
+  res.locals.request = {
+    url: {
+      path: req.path
+    }
+  };
+  res.locals.error = req.query.error || null;
+  res.locals.msg = req.query.msg || null;
+  next();
+});
+
+// -------------------------------------------------------------
+// Public Student Council Portal (ОСО СГТУ)
+// -------------------------------------------------------------
+
+app.get('/oco', (req, res) => {
+  res.redirect('/');
+});
+
+app.get('/', (req, res) => {
+  if (req.user && req.user.is_approved) {
+    return res.redirect('/content-plan');
+  }
+  return res.redirect('/login');
+});
+
+app.get('/login', (req, res) => {
+  res.render('login.html', {
+    current_user: req.user,
+    error: req.query.error,
+    msg: req.query.msg
+  });
+});
+
+app.post('/login', async (req, res) => {
+  const username = (req.body.username || '').trim().toLowerCase();
+  const password = (req.body.password || '').trim();
+
+  const user = await db.get('SELECT * FROM users WHERE LOWER(username) = ?', [username]);
+
+  if (!user || !db.verifyPassword(password, user.password_hash)) {
+    const err = encodeURIComponent('Неверный логин или пароль.');
+    return res.redirect(`/login?error=${err}`);
+  }
+
+  if (!user.is_approved) {
+    const err = encodeURIComponent(
+      'Ваш профиль ожидает одобрения главным администратором (4 уровень). Доступ откроется после подтверждения.'
+    );
+    return res.redirect(`/login?error=${err}`);
+  }
+
+  res.cookie('user_id', String(user.id), {
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+  res.redirect('/content-plan');
+});
+
+app.get('/register', (req, res) => {
+  res.render('register.html', {
+    current_user: req.user,
+    error: req.query.error,
+    msg: req.query.msg
+  });
+});
+
+app.post('/register', async (req, res) => {
+  const name = (req.body.name || '').trim();
+  const username = (req.body.username || '').trim().toLowerCase();
+  const password = (req.body.password || '').trim();
+  const role = (req.body.role || '').trim();
+  const telegramId = (req.body.telegram_id || '').trim();
+
+  if (!name || !username || !password || !role) {
+    const err = encodeURIComponent('Все обязательные поля (ФИО, логин, пароль, направление) должны быть заполнены.');
+    return res.redirect(`/register?error=${err}`);
+  }
+
+  const existing = await db.get('SELECT id FROM users WHERE LOWER(username) = ?', [username]);
+  if (existing) {
+    const err = encodeURIComponent(`Логин '${username}' уже занят. Пожалуйста, выберите другой логин.`);
+    return res.redirect(`/register?error=${err}`);
+  }
+
+  const passwordHash = db.hashPassword(password);
+  const result = await db.run(
+    `INSERT INTO users (name, username, password_hash, telegram_id, role, access_level, is_approved, completed_tasks, average_score)
+     VALUES (?, ?, ?, ?, ?, 1, 0, 0, 0.0)`,
+    [name, username, passwordHash, telegramId || null, role]
+  );
+
+  const newUser = await db.get('SELECT * FROM users WHERE id = ?', [result.lastID]);
+  try {
+    await telegramService.notifyNewUserRegistered(newUser);
+  } catch (e) {
+    console.error('Error notifying new user registration:', e);
+  }
+
+  const msg = encodeURIComponent('Заявка успешно отправлена! Главный администратор (4 уровень) рассмотрит ее в специальной ветке модерации.');
+  return res.redirect(`/login?msg=${msg}`);
+});
+
+app.get('/logout', (req, res) => {
+  res.clearCookie('user_id');
+  const msg = encodeURIComponent('Вы успешно вышли из системы.');
+  res.redirect(`/login?msg=${msg}`);
+});
+
+// -------------------------------------------------------------
+// Admin: User Management (Level 4)
+// -------------------------------------------------------------
+
+app.get('/admin/users', requireAuth, requireLevel(4, 'Доступ в ветку управления профилями разрешен только Администраторам (Уровень 4).'), async (req, res) => {
+  const pendingUsers = await db.all('SELECT * FROM users WHERE is_approved = 0 ORDER BY id DESC');
+  const activeUsers = await db.all('SELECT * FROM users WHERE is_approved = 1 ORDER BY access_level DESC, id ASC');
+
+  res.render('admin_users.html', {
+    current_user: req.user,
+    pending_users: pendingUsers,
+    active_users: activeUsers,
+    error: req.query.error,
+    msg: req.query.msg
+  });
+});
+
+app.post('/admin/users/:id/approve', requireAuth, requireLevel(4), async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+  const accessLevel = parseInt(req.body.access_level || 1, 10);
+
+  const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
+  if (!targetUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect(`/admin/users?error=${err}`);
+  }
+
+  const levelClamped = Math.max(1, Math.min(4, accessLevel));
+  await db.run('UPDATE users SET is_approved = 1, access_level = ? WHERE id = ?', [levelClamped, profileId]);
+
+  const msg = encodeURIComponent(`Профиль ${targetUser.name} (@${targetUser.username}) успешно одобрен с уровнем ${levelClamped}!`);
+  res.redirect(`/admin/users?msg=${msg}`);
+});
+
+app.post('/admin/users/:id/reject', requireAuth, requireLevel(4), async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+  const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
+
+  if (!targetUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect(`/admin/users?error=${err}`);
+  }
+
+  if (targetUser.username === db.ROOT_ADMIN_USERNAME) {
+    const err = encodeURIComponent("Системный профиль 'stepyn' защищен от любых изменений.");
+    return res.redirect(`/admin/users?error=${err}`);
+  }
+
+  await db.run('DELETE FROM users WHERE id = ?', [profileId]);
+  const msg = encodeURIComponent('Заявка на регистрацию отклонена, временный профиль удален.');
+  res.redirect(`/admin/users?msg=${msg}`);
+});
+
+app.post('/admin/users/:id/delete', requireAuth, requireLevel(4, 'Удалять профили могут только Администраторы (Уровень 4).'), async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+  const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
+
+  if (!targetUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect(`/admin/users?error=${err}`);
+  }
+
+  if (targetUser.username === db.ROOT_ADMIN_USERNAME) {
+    const err = encodeURIComponent("ПРОФИЛЬ 'stepyn' ЯВЛЯЕТСЯ СИСТЕМНЫМ И ЗАЩИЩЕН ОТ УДАЛЕНИЯ НАВСЕГДА!");
+    return res.redirect(`/admin/users?error=${err}`);
+  }
+
+  if (targetUser.id === req.user.id) {
+    const err = encodeURIComponent('Вы не можете удалить свой собственный профиль во время активной сессии.');
+    return res.redirect(`/admin/users?error=${err}`);
+  }
+
+  // Safe detachment of tasks
+  await db.run('UPDATE tasks SET assigned_to_id = NULL, status = "open" WHERE assigned_to_id = ? AND status = "in_progress"', [profileId]);
+  await db.run('UPDATE tasks SET assigned_to_id = NULL WHERE assigned_to_id = ?', [profileId]);
+  await db.run('DELETE FROM users WHERE id = ?', [profileId]);
+
+  const msg = encodeURIComponent(`Профиль ${targetUser.name} (@${targetUser.username}) удален. Связанные задачи освобождены.`);
+  res.redirect(`/admin/users?msg=${msg}`);
+});
+
+app.post('/admin/users/:id/inline-edit', requireAuth, requireLevel(4, 'Недостаточно прав. Только администраторы (4 уровень) могут редактировать участников.'), async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+  const name = (req.body.name || '').trim();
+  const password = (req.body.password || '').trim();
+  const role = (req.body.role || '').trim();
+  const accessLevel = req.body.access_level !== undefined ? parseInt(req.body.access_level, 10) : null;
+  const redirectTo = req.body.redirect_to || '/admin/users';
+
+  const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
+  if (!targetUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect(`${redirectTo}?error=${err}`);
+  }
+
+  if (name) targetUser.name = name;
+  if (password) targetUser.password_hash = db.hashPassword(password);
+  if (role) targetUser.role = role;
+
+  if (accessLevel !== null && !isNaN(accessLevel)) {
+    if (targetUser.username === db.ROOT_ADMIN_USERNAME) {
+      targetUser.access_level = 4;
+    } else {
+      targetUser.access_level = Math.max(1, Math.min(4, accessLevel));
+    }
+  }
+
+  await db.run(
+    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ? WHERE id = ?',
+    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, profileId]
+  );
+
+  const msg = encodeURIComponent(`Данные участника ${targetUser.name} успешно обновлены!`);
+  res.redirect(`${redirectTo}?msg=${msg}`);
+});
+
+// -------------------------------------------------------------
+// Profile Routes
+// -------------------------------------------------------------
+
+app.get('/profile/:id', requireAuth, async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+  const profileUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
+
+  if (!profileUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  const userTasks = await db.all('SELECT * FROM tasks WHERE assigned_to_id = ? ORDER BY id DESC', [profileId]);
+  for (const t of userTasks) {
+    t.graded_by = t.graded_by_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.graded_by_id]) : null;
+    t.comments = await db.all('SELECT * FROM task_comments WHERE task_id = ?', [t.id]);
+  }
+
+  const inProgressCount = userTasks.filter(t => t.status === 'in_progress').length;
+  const reviewCount = userTasks.filter(t => t.status === 'review').length;
+
+  res.render('profile.html', {
+    profile_user: profileUser,
+    current_user: req.user,
+    user_tasks: userTasks,
+    in_progress_count: inProgressCount,
+    review_count: reviewCount,
+    gdrive_folder_url: gdriveService.getTargetFolderUrl(),
+    error: req.query.error,
+    msg: req.query.msg
+  });
+});
+
+app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточно прав. Только администраторы (4 уровень) могут редактировать профили участников.'), async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+  const name = (req.body.name || '').trim();
+  const password = (req.body.password || '').trim();
+  const role = (req.body.role || '').trim();
+  const accessLevel = req.body.access_level !== undefined ? parseInt(req.body.access_level, 10) : null;
+
+  const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
+  if (!targetUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  if (name) targetUser.name = name;
+  if (password) targetUser.password_hash = db.hashPassword(password);
+  if (role) targetUser.role = role;
+
+  if (accessLevel !== null && !isNaN(accessLevel)) {
+    if (targetUser.username === db.ROOT_ADMIN_USERNAME) {
+      targetUser.access_level = 4;
+    } else {
+      targetUser.access_level = Math.max(1, Math.min(4, accessLevel));
+    }
+  }
+
+  await db.run(
+    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ? WHERE id = ?',
+    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, profileId]
+  );
+
+  const msg = encodeURIComponent(`Данные профиля ${targetUser.name} успешно обновлены!`);
+  res.redirect(`/profile/${profileId}?msg=${msg}`);
+});
+
+app.post('/profile/telegram-bind', requireAuth, async (req, res) => {
+  const telegramId = (req.body.telegram_id || '').trim();
+  await db.run('UPDATE users SET telegram_id = ? WHERE id = ?', [telegramId || null, req.user.id]);
+  const msg = encodeURIComponent('Telegram успешно сохранен в вашем профиле!');
+  res.redirect(`/profile/${req.user.id}?msg=${msg}`);
+});
+
+// -------------------------------------------------------------
+// Content Plan Routes
+// -------------------------------------------------------------
+
+app.get('/content-plan', requireAuth, async (req, res) => {
+  const direction = req.query.direction ? req.query.direction.trim() : null;
+  const status = req.query.status ? req.query.status.trim() : null;
+
+  let query = 'SELECT * FROM tasks';
+  const where = [];
+  const params = [];
+
+  if (direction) {
+    where.push('direction = ?');
+    params.push(direction);
+  }
+  if (status) {
+    where.push('status = ?');
+    params.push(status);
+  }
+
+  if (where.length > 0) {
+    query += ' WHERE ' + where.join(' AND ');
+  }
+  query += ' ORDER BY id DESC';
+
+  const tasks = await db.all(query, params);
+  for (const t of tasks) {
+    t.assigned_to = t.assigned_to_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.assigned_to_id]) : null;
+    t.comments = await db.all('SELECT * FROM task_comments WHERE task_id = ?', [t.id]);
+  }
+
+  let assignableUsers = [];
+  if (req.user.access_level === 2) {
+    assignableUsers = await db.all('SELECT * FROM users WHERE role = ? AND is_approved = 1', [req.user.role]);
+  } else {
+    assignableUsers = await db.all('SELECT * FROM users WHERE access_level <= 3 AND is_approved = 1');
+  }
+
+  res.render('content_plan.html', {
+    current_user: req.user,
+    tasks,
+    selected_direction: direction,
+    selected_status: status,
+    assignable_users: assignableUsers,
+    gdrive_folder_url: gdriveService.getTargetFolderUrl(),
+    error: req.query.error,
+    msg: req.query.msg
+  });
+});
+
+app.post('/content-plan/create', requireAuth, requireLevel(2, 'Недостаточно прав. Создавать задачи могут только главы направлений и руководство.'), async (req, res) => {
+  const title = (req.body.title || '').trim();
+  const description = (req.body.description || '').trim();
+  const direction = (req.body.direction || '').trim();
+  const deadline = (req.body.deadline || '').trim() || null;
+  const assignedToIdStr = (req.body.assigned_to_id || '').trim();
+  const assigneeIdVal = assignedToIdStr ? parseInt(assignedToIdStr, 10) : null;
+
+  // Level 2 restriction: can only assign within their direction
+  if (req.user.access_level === 2 && assigneeIdVal !== null) {
+    const assignee = await db.get('SELECT * FROM users WHERE id = ?', [assigneeIdVal]);
+    if (!assignee || assignee.role !== req.user.role) {
+      const err = encodeURIComponent(`Ограничение главы цеха: вы можете назначать задачи только участникам направления '${req.user.role}'.`);
+      return res.redirect(`/content-plan?error=${err}`);
+    }
+  }
+
+  const initialStatus = assigneeIdVal ? 'in_progress' : 'open';
+  const result = await db.run(
+    `INSERT INTO tasks (title, description, direction, status, deadline, assigned_to_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [title, description, direction, initialStatus, deadline, assigneeIdVal]
+  );
+
+  const msg = encodeURIComponent(`Задача #${result.lastID} '${title}' успешно добавлена в контент-план.`);
+  res.redirect(`/content-plan?msg=${msg}`);
+});
+
+// -------------------------------------------------------------
+// Task Workflow & Comments Routes
+// -------------------------------------------------------------
+
+app.post('/task/:id/deadline', requireAuth, requireLevel(3, 'Недостаточно прав. Менять дедлайн задачи могут только руководители (3 и 4 уровень доступа).'), async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const target = req.body.redirect_to && req.body.redirect_to.trim() ? req.body.redirect_to.trim() : '/content-plan';
+  const deadline = (req.body.deadline || '').trim() || null;
+
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`${target}?error=${err}`);
+  }
+
+  await db.run('UPDATE tasks SET deadline = ? WHERE id = ?', [deadline, taskId]);
+  const dlDisplay = deadline ? deadline.replace('T', ' ') : 'снят';
+  const msg = encodeURIComponent(`Дедлайн по задаче #${task.id} успешно обновлен (${dlDisplay})!`);
+  res.redirect(`${target}?msg=${msg}`);
+});
+
+app.get('/task/:id', requireAuth, async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  task.assigned_to = task.assigned_to_id ? await db.get('SELECT * FROM users WHERE id = ?', [task.assigned_to_id]) : null;
+  task.graded_by = task.graded_by_id ? await db.get('SELECT * FROM users WHERE id = ?', [task.graded_by_id]) : null;
+
+  const rawComments = await db.all('SELECT * FROM task_comments WHERE task_id = ? ORDER BY id ASC', [taskId]);
+  for (const c of rawComments) {
+    c.user = await db.get('SELECT * FROM users WHERE id = ?', [c.user_id]);
+  }
+  task.comments = rawComments;
+
+  res.render('task_detail.html', {
+    current_user: req.user,
+    task,
+    comments: rawComments,
+    gdrive_folder_url: gdriveService.getTargetFolderUrl(),
+    error: req.query.error,
+    msg: req.query.msg
+  });
+});
+
+app.post('/task/:id/comments', requireAuth, async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const message = (req.body.message || '').trim();
+  const target = req.body.redirect_to && req.body.redirect_to.trim() ? req.body.redirect_to.trim() : `/task/${taskId}`;
+
+  if (!message) {
+    const err = encodeURIComponent('Сообщение не может быть пустым.');
+    return res.redirect(`${target}?error=${err}#comments`);
+  }
+
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  const nowIso = new Date().toISOString();
+  await db.run(
+    'INSERT INTO task_comments (task_id, user_id, message, created_at) VALUES (?, ?, ?, ?)',
+    [taskId, req.user.id, message, nowIso]
+  );
+
+  try {
+    await telegramService.notifyTaskComment(task, req.user, message);
+  } catch (e) {
+    console.error('Error notifying comment in Telegram:', e);
+  }
+
+  const msg = encodeURIComponent('Сообщение успешно отправлено в чат задачи!');
+  res.redirect(`${target}?msg=${msg}#comments`);
+});
+
+app.get('/api/task/:id/comments', requireAuth, async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
+  const rawComments = await db.all('SELECT * FROM task_comments WHERE task_id = ? ORDER BY id ASC', [taskId]);
+  const formatted = [];
+  for (const c of rawComments) {
+    const u = await db.get('SELECT * FROM users WHERE id = ?', [c.user_id]);
+    formatted.push({
+      id: c.id,
+      user_id: c.user_id,
+      user_name: u ? u.name : 'Участник',
+      user_role: u ? u.role : '',
+      user_level: u ? u.access_level : 1,
+      message: c.message,
+      created_at: c.created_at ? c.created_at.strftime('%d.%m %H:%M') : '',
+      is_author_assignee: Boolean(task.assigned_to_id === c.user_id),
+      is_current_user: Boolean(c.user_id === req.user.id)
+    });
+  }
+  res.json(formatted);
+});
+
+app.post('/api/task/:id/comments', requireAuth, async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const message = (req.body.message || '').trim();
+
+  if (!message) {
+    return res.status(400).json({ error: 'Empty message' });
+  }
+
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+
+  const nowIso = new Date().toISOString();
+  const resInsert = await db.run(
+    'INSERT INTO task_comments (task_id, user_id, message, created_at) VALUES (?, ?, ?, ?)',
+    [taskId, req.user.id, message, nowIso]
+  );
+
+  try {
+    await telegramService.notifyTaskComment(task, req.user, message);
+  } catch (e) {
+    console.error('Error notifying comment in Telegram:', e);
+  }
+
+  res.json({
+    success: true,
+    comment: {
+      id: resInsert.lastID,
+      user_id: req.user.id,
+      user_name: req.user.name,
+      user_role: req.user.role,
+      user_level: req.user.access_level,
+      message,
+      created_at: nowIso.strftime('%d.%m %H:%M'),
+      is_author_assignee: Boolean(task.assigned_to_id === req.user.id),
+      is_current_user: true
+    }
+  });
+});
+
+app.post('/task/:id/take', requireAuth, async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  if (task.status !== 'open') {
+    const err = encodeURIComponent('Эта задача уже взята в работу другим участником или завершена.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  await db.run('UPDATE tasks SET assigned_to_id = ?, status = "in_progress" WHERE id = ?', [req.user.id, taskId]);
+
+  const msg = encodeURIComponent(`Вы успешно взяли задачу #${task.id} в работу! Ознакомьтесь с подробным описанием и задайте вопросы в чате.`);
+  res.redirect(`/task/${task.id}?msg=${msg}`);
+});
+
+app.post('/task/:id/submit', requireAuth, upload.single('file_upload'), async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const fileLink = (req.body.file_link || '').trim();
+  const target = req.body.redirect_to && req.body.redirect_to.trim() ? req.body.redirect_to.trim() : `/profile/${req.user.id}`;
+
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  if (task.assigned_to_id !== req.user.id && req.user.access_level < 4) {
+    const err = encodeURIComponent('Вы не можете сдать чужую задачу.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  if (!['in_progress', 'open', 'rework'].includes(task.status)) {
+    const err = encodeURIComponent('Задача уже находится на проверке или закрыта.');
+    return res.redirect(`/profile/${req.user.id}?error=${err}`);
+  }
+
+  let resolvedLink = null;
+  let resolvedName = null;
+
+  // 1. If file uploaded
+  if (req.file && req.file.buffer && req.file.buffer.length > 0) {
+    const uploadRes = await gdriveService.saveLocalAndSyncGdrive(req.file.buffer, req.file.originalname, task.id);
+    resolvedLink = uploadRes.fileLink;
+    resolvedName = uploadRes.fileName;
+  }
+
+  // 2. If external link provided
+  if (!resolvedLink && fileLink) {
+    resolvedLink = fileLink;
+    resolvedName = 'Внешняя ссылка';
+  }
+
+  if (!resolvedLink) {
+    const err = encodeURIComponent('Пожалуйста, прикрепите файл или укажите ссылку на результат работы.');
+    return res.redirect(`/profile/${req.user.id}?error=${err}`);
+  }
+
+  await db.run(
+    'UPDATE tasks SET file_link = ?, file_name = ?, status = "review" WHERE id = ?',
+    [resolvedLink, resolvedName, taskId]
+  );
+  task.file_link = resolvedLink;
+  task.file_name = resolvedName;
+  task.status = 'review';
+
+  try {
+    await telegramService.notifyTaskSubmittedForReview(task, req.user);
+  } catch (e) {
+    console.error('Error notifying task submission in Telegram:', e);
+  }
+
+  const msg = encodeURIComponent(`Работа по задаче #${task.id} успешно загружена и отправлена на проверку руководству!`);
+  res.redirect(`${target}?msg=${msg}`);
+});
+
+app.post('/task/:id/rate', requireAuth, requireLevel(3, 'Оценивать задачи могут только руководители (Уровень 3–4).'), async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const score = parseInt(req.body.score, 10);
+  const target = req.body.redirect_to && req.body.redirect_to.trim() ? req.body.redirect_to.trim() : '/management';
+
+  if (isNaN(score) || score < 1 || score > 10) {
+    const err = encodeURIComponent('Оценка должна быть целым числом в диапазоне от 1 до 10.');
+    return res.redirect(`/management?error=${err}`);
+  }
+
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`/management?error=${err}`);
+  }
+
+  await db.run(
+    'UPDATE tasks SET score = ?, graded_by_id = ?, status = "done" WHERE id = ?',
+    [score, req.user.id, taskId]
+  );
+  task.score = score;
+  task.graded_by_id = req.user.id;
+  task.status = 'done';
+
+  await db.recalculateUserStats(task.assigned_to_id);
+
+  try {
+    await telegramService.notifyTaskGraded(task, req.user, score);
+  } catch (e) {
+    console.error('Error notifying task grade in Telegram:', e);
+  }
+
+  const msg = encodeURIComponent(`Задача #${task.id} принята с оценкой ${score}/10! Статистика исполнителя обновлена.`);
+  res.redirect(`${target}?msg=${msg}`);
+});
+
+app.post('/task/:id/status', requireAuth, requireLevel(2, 'Недостаточно прав. Менять статус задач могут только руководители (Уровень 2, 3 и 4).'), async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const targetStatus = (req.body.target_status || '').trim().toLowerCase();
+  const score = req.body.score !== undefined ? parseInt(req.body.score, 10) : null;
+  const reworkNotes = (req.body.rework_notes || '').trim();
+  const target = req.body.redirect_to && req.body.redirect_to.trim() ? req.body.redirect_to.trim() : '/content-plan';
+
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`${target}?error=${err}`);
+  }
+
+  const oldAssigneeId = task.assigned_to_id;
+
+  if (targetStatus === 'done') {
+    const finalScore = (score !== null && !isNaN(score) && score >= 1 && score <= 10) ? score : (task.score || 10);
+    await db.run(
+      'UPDATE tasks SET status = "done", score = ?, graded_by_id = ? WHERE id = ?',
+      [finalScore, req.user.id, taskId]
+    );
+    task.score = finalScore;
+    task.graded_by_id = req.user.id;
+    task.status = 'done';
+
+    await db.recalculateUserStats(oldAssigneeId);
+    try {
+      await telegramService.notifyTaskGraded(task, req.user, finalScore);
+    } catch (e) {}
+
+    const msg = encodeURIComponent(`Задача #${task.id} успешно закрыта как 'Выполнено' (оценка: ${finalScore}/10)!`);
+    return res.redirect(`${target}?msg=${msg}`);
+  } else if (targetStatus === 'in_progress') {
+    await db.run(
+      'UPDATE tasks SET status = "in_progress", score = NULL, graded_by_id = NULL WHERE id = ?',
+      [taskId]
+    );
+    await db.recalculateUserStats(oldAssigneeId);
+
+    const msg = encodeURIComponent(`Задача #${task.id} возвращена в статус 'В работе'.`);
+    return res.redirect(`${target}?msg=${msg}`);
+  } else if (targetStatus === 'rework') {
+    await db.run(
+      'UPDATE tasks SET status = "rework", score = NULL, graded_by_id = NULL, rework_notes = ? WHERE id = ?',
+      [reworkNotes || null, taskId]
+    );
+    task.status = 'rework';
+    task.rework_notes = reworkNotes;
+
+    await db.recalculateUserStats(oldAssigneeId);
+    try {
+      await telegramService.notifyTaskRework(task, req.user, reworkNotes);
+    } catch (e) {}
+
+    const msg = encodeURIComponent(`Задача #${task.id} отправлена на доработку. Исполнитель уведомлен!`);
+    return res.redirect(`${target}?msg=${msg}`);
+  } else {
+    const err = encodeURIComponent(`Неизвестный целевой статус: ${targetStatus}`);
+    return res.redirect(`${target}?error=${err}`);
+  }
+});
+
+// -------------------------------------------------------------
+// Management Panel Routes (Level 3-4)
+// -------------------------------------------------------------
+
+app.get('/management', requireAuth, requireLevel(3, 'Доступ к панели руководства ограничен (требуется уровень доступа 3 или 4).'), async (req, res) => {
+  const reviewTasks = await db.all('SELECT * FROM tasks WHERE status = "review" ORDER BY id DESC');
+  for (const t of reviewTasks) {
+    t.assigned_to = t.assigned_to_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.assigned_to_id]) : null;
+  }
+
+  const doneTasksCount = (await db.get('SELECT COUNT(*) as c FROM tasks WHERE status = "done"')).c;
+
+  const teamMembers = await db.all('SELECT * FROM users WHERE is_approved = 1 ORDER BY access_level DESC, id ASC');
+  for (const member of teamMembers) {
+    member.tasks = await db.all('SELECT * FROM tasks WHERE assigned_to_id = ? ORDER BY id DESC', [member.id]);
+    for (const t of member.tasks) {
+      t.graded_by = t.graded_by_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.graded_by_id]) : null;
+    }
+  }
+
+  const gradedTasks = await db.all('SELECT score FROM tasks WHERE status = "done" AND score IS NOT NULL');
+  let teamAvgScore = 0.0;
+  if (gradedTasks.length > 0) {
+    const sum = gradedTasks.reduce((acc, t) => acc + Number(t.score), 0);
+    teamAvgScore = Math.round((sum / gradedTasks.length) * 100) / 100;
+  }
+
+  const pendingGdriveCount = (await db.get('SELECT COUNT(*) as c FROM tasks WHERE file_link LIKE "/uploads/%"')).c;
+
+  res.render('management.html', {
+    current_user: req.user,
+    review_tasks: reviewTasks,
+    done_tasks_count: doneTasksCount,
+    team_members: teamMembers,
+    team_avg_score: teamAvgScore,
+    bot_username: telegramService.getBotUsername(),
+    leadership_chat_id: telegramService.getLeadershipChatId(),
+    gdrive_folder_url: gdriveService.getTargetFolderUrl(),
+    gdrive_info: gdriveService.getServiceAccountInfo(),
+    pending_gdrive_count: pendingGdriveCount,
+    apps_script_template: gdriveService.getAppsScriptTemplate(),
+    error: req.query.error,
+    msg: req.query.msg
+  });
+});
+
+app.post('/management/telegram-test', requireAuth, requireLevel(3, 'Только руководство (Уровень 3+) может отправлять тестовые оповещения.'), async (req, res) => {
+  const targetChat = (req.body.chat_id || '').trim() || req.user.telegram_id || telegramService.getLeadershipChatId();
+
+  if (!targetChat) {
+    const err = encodeURIComponent('Укажите Telegram Chat ID или привяжите свой аккаунт через бота @ping_sstu_bot.');
+    return res.redirect(`/management?error=${err}`);
+  }
+
+  const ok = await telegramService.sendTestNotification(targetChat);
+  if (ok) {
+    const msg = encodeURIComponent(`Тестовое оповещение успешно доставлено в Telegram (${targetChat})!`);
+    return res.redirect(`/management?msg=${msg}`);
+  } else {
+    const err = encodeURIComponent(`Не удалось отправить сообщение в '${targetChat}'. Проверьте, что бот @ping_sstu_bot запущен в диалоге или добавлен в группу.`);
+    return res.redirect(`/management?error=${err}`);
+  }
+});
+
+app.post('/management/telegram-set-group', requireAuth, requireLevel(3), (req, res) => {
+  const cid = (req.body.group_chat_id || '').trim();
+  telegramService.saveConfig({ leadership_group_chat_id: cid || null });
+  const msg = encodeURIComponent(`Общий чат руководства (${cid || 'сброшен'}) успешно обновлен!`);
+  res.redirect(`/management?msg=${msg}`);
+});
+
+app.post('/management/gdrive/config', requireAuth, requireLevel(3, 'Только руководство (Уровень 3+) может менять настройки Google Диска.'), (req, res) => {
+  const updates = {};
+  if (req.body.webhook_url !== undefined) {
+    updates.webhook_url = req.body.webhook_url.trim();
+  }
+  if (req.body.folder_id && req.body.folder_id.trim()) {
+    const fId = req.body.folder_id.trim();
+    updates.folder_id = fId;
+    updates.folder_url = `https://drive.google.com/drive/folders/${fId}`;
+  }
+
+  gdriveService.saveGdriveConfig(updates);
+  const msg = encodeURIComponent('Настройки интеграции с Google Диском успешно сохранены!');
+  res.redirect(`/management?msg=${msg}`);
+});
+
+app.post('/management/gdrive/upload-sa', requireAuth, requireLevel(4, 'Только администраторы (Уровень 4) могут загружать ключ Service Account.'), upload.single('sa_file'), (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    const err = encodeURIComponent('Файл не предоставлен.');
+    return res.redirect(`/management?error=${err}`);
+  }
+
+  try {
+    const parsed = JSON.parse(req.file.buffer.toString('utf8'));
+    if (parsed.type !== 'service_account' || !parsed.client_email) {
+      const err = encodeURIComponent('Файл не является валидным ключом Google Service Account JSON.');
+      return res.redirect(`/management?error=${err}`);
+    }
+
+    fs.writeFileSync(gdriveService.SERVICE_ACCOUNT_FILE, req.file.buffer);
+    const msg = encodeURIComponent(`Ключ Google Service Account (${parsed.client_email}) успешно сохранен!`);
+    res.redirect(`/management?msg=${msg}`);
+  } catch (e) {
+    const err = encodeURIComponent(`Ошибка чтения файла ключа: ${e.message}`);
+    res.redirect(`/management?error=${err}`);
+  }
+});
+
+app.post('/management/gdrive/sync-all', requireAuth, requireLevel(3, 'Только руководство может запускать синхронизацию с Google Диском.'), async (req, res) => {
+  const synced = await gdriveService.syncAllPendingTasks(db);
+  if (synced > 0) {
+    const msg = encodeURIComponent(`Успешно выгружено ${synced} файлов на Google Диск команды!`);
+    res.redirect(`/management?msg=${msg}`);
+  } else {
+    const msg = encodeURIComponent('Нет файлов для выгрузки либо Google Диск (Webhook/Service Account) еще не настроен.');
+    res.redirect(`/management?msg=${msg}`);
+  }
+});
+
+// -------------------------------------------------------------
+// Work Materials Repository Routes
+// -------------------------------------------------------------
+
+app.get('/materials', requireAuth, async (req, res) => {
+  const direction = req.query.direction ? req.query.direction.trim() : null;
+  const category = req.query.category ? req.query.category.trim() : null;
+
+  let query = 'SELECT * FROM work_materials';
+  const where = [];
+  const params = [];
+
+  if (direction) {
+    where.push('direction = ?');
+    params.push(direction);
+  }
+  if (category) {
+    where.push('category = ?');
+    params.push(category);
+  }
+
+  if (where.length > 0) {
+    query += ' WHERE ' + where.join(' AND ');
+  }
+  query += ' ORDER BY id DESC';
+
+  const materials = await db.all(query, params);
+  for (const m of materials) {
+    m.uploaded_by = m.uploaded_by_id ? await db.get('SELECT * FROM users WHERE id = ?', [m.uploaded_by_id]) : null;
+  }
+
+  const allMaterials = await db.all('SELECT direction FROM work_materials');
+  const countsObj = {};
+  for (const m of allMaterials) {
+    countsObj[m.direction] = (countsObj[m.direction] || 0) + 1;
+  }
+
+  res.render('materials.html', {
+    current_user: req.user,
+    materials,
+    selected_direction: direction,
+    selected_category: category,
+    counts: wrapDict(countsObj),
+    total_count: allMaterials.length,
+    gdrive_folder_url: gdriveService.getTargetFolderUrl(),
+    error: req.query.error,
+    msg: req.query.msg
+  });
+});
+
+app.post('/materials/create', requireAuth, requireLevel(3, 'Недостаточно прав. Загружать материалы могут только руководители (3 и 4 уровень доступа).'), upload.single('file_upload'), async (req, res) => {
+  const title = (req.body.title || '').trim();
+  const direction = (req.body.direction || '').trim();
+  const category = (req.body.category || 'Материалы').trim();
+  const description = (req.body.description || '').trim() || null;
+  const fileLink = (req.body.file_link || '').trim();
+
+  if (!title) {
+    const err = encodeURIComponent('Название материала не может быть пустым.');
+    return res.redirect(`/materials?error=${err}`);
+  }
+
+  let resolvedLink = null;
+  let resolvedName = null;
+
+  // 1. If uploaded file
+  if (req.file && req.file.buffer && req.file.buffer.length > 0) {
+    const uploadRes = await gdriveService.saveLocalAndSyncGdrive(req.file.buffer, req.file.originalname, 999999);
+    resolvedLink = uploadRes.fileLink;
+    resolvedName = uploadRes.fileName;
+  }
+
+  // 2. If external link
+  if (!resolvedLink && fileLink) {
+    resolvedLink = fileLink;
+    resolvedName = 'Внешняя ссылка';
+  }
+
+  if (!resolvedLink) {
+    const err = encodeURIComponent('Пожалуйста, прикрепите файл или укажите ссылку на материал.');
+    return res.redirect(`/materials?error=${err}`);
+  }
+
+  const nowIso = new Date().toISOString();
+  await db.run(
+    `INSERT INTO work_materials (title, description, direction, category, file_link, file_name, uploaded_by_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [title, description, direction, category, resolvedLink, resolvedName, req.user.id, nowIso]
+  );
+
+  const msg = encodeURIComponent(`Материал «${title}» успешно опубликован в разделе «${direction}»!`);
+  res.redirect(`/materials?direction=${encodeURIComponent(direction)}&msg=${msg}`);
+});
+
+app.post('/materials/:id/delete', requireAuth, requireLevel(3, 'Недостаточно прав для удаления материалов.'), async (req, res) => {
+  const materialId = parseInt(req.params.id, 10);
+  const material = await db.get('SELECT * FROM work_materials WHERE id = ?', [materialId]);
+
+  if (!material) {
+    const err = encodeURIComponent('Материал не найден.');
+    return res.redirect(`/materials?error=${err}`);
+  }
+
+  const title = material.title;
+  await db.run('DELETE FROM work_materials WHERE id = ?', [materialId]);
+
+  const msg = encodeURIComponent(`Материал «${title}» успешно удален.`);
+  res.redirect(`/materials?msg=${msg}`);
+});
+
+// -------------------------------------------------------------
+// Live Sync API
+// -------------------------------------------------------------
+
+app.get('/api/review-count', async (req, res) => {
+  const row = await db.get('SELECT COUNT(*) as c FROM tasks WHERE status = "review"');
+  res.json({ review_count: row.c });
+});
+
+// -------------------------------------------------------------
+// Server Initialization
+// -------------------------------------------------------------
+
+async function startServer() {
+  await db.initDb();
+  console.log('[Database] SQLite initialized successfully.');
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 [Node.js Engine] Server running on http://0.0.0.0:${PORT}`);
+    telegramService.botWorker.start();
+  });
+}
+
+if (require.main === module) {
+  startServer().catch(err => {
+    console.error('Server failed to start:', err);
+  });
+}
+
+module.exports = { app, startServer };

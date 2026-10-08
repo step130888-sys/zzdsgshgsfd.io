@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Вход в систему | ОСО СГТУ • Медиацентр{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto py-8">
+    <div class="cyber-glass-glow rounded-3xl border border-violet-500/30 overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+        
+        <!-- Header Banner: Cosmic Glass + Official Circular Logo Display -->
+        <div class="p-8 text-center relative overflow-hidden bg-gradient-to-b from-violet-950/40 via-cosmic-850 to-transparent border-b border-violet-500/20">
+            <!-- Decorative Cosmic Flares -->
+            <div class="absolute top-5 right-8 text-xl text-violet-300 opacity-60 select-none animate-pulse">✦</div>
+            <div class="absolute bottom-5 left-8 text-lg text-cyan-300 opacity-60 select-none">✧</div>
+            
+            <div class="flex flex-col items-center justify-center">
+                <!-- Official Glowing OCO Logo in a Perfect Cosmic Circle -->
+                <div class="relative mb-4 group">
+                    <!-- Symmetrical Outer Glow -->
+                    <div class="absolute -inset-1.5 rounded-full bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-400 opacity-70 blur-lg group-hover:opacity-100 transition duration-300"></div>
+                    
+                    <!-- Circular Glowing Ring -->
+                    <div class="relative w-24 h-24 md:w-28 md:h-28 rounded-full p-[2px] bg-gradient-to-tr from-violet-500 via-fuchsia-500 to-cyan-400 shadow-[0_0_25px_rgba(139,92,246,0.6)]">
+                        <div class="w-full h-full rounded-full overflow-hidden bg-black flex items-center justify-center p-2">
+                            <img src="/uploads/oco_logo.png" alt="ОСО СГТУ" class="w-full h-full object-contain rounded-full transform group-hover:scale-105 transition-transform duration-300">
+                        </div>
+                    </div>
+                    
+                    <!-- Radiant Chrome Star Accent -->
+                    <span class="absolute -bottom-1 -right-1 text-base text-cyan-300 filter drop-shadow-[0_0_6px_rgba(56,189,248,0.9)] select-none">✦</span>
+                </div>
+                
+                <!-- Symmetrically Centered Pill Badge -->
+                <div class="mb-3">
+                    <span class="inline-flex items-center text-[10px] md:text-[11px] font-black uppercase tracking-widest px-4 py-1 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)] text-center">
+                        СОВЕТ ОБУЧАЮЩИХСЯ СГТУ ИМ. ГАГАРИНА Ю.А.
+                    </span>
+                </div>
+                
+                <!-- Main Title -->
+                <h1 class="text-2xl md:text-3xl font-black uppercase tracking-tight holo-text text-center leading-tight">
+                    МЕДИАЦЕНТР ПОЛИТЕХА
+                </h1>
+                
+                <!-- Subtitle -->
+                <p class="font-script text-xl md:text-2xl text-cyan-300 mt-1.5 text-center">
+                    «Перед тобой открыто всё — твои лучшие годы здесь!»
+                </p>
+            </div>
+        </div>
+
+        <div class="p-8 space-y-6">
+            <!-- Form -->
+            <form action="/login" method="POST" class="space-y-4">
+                <div>
+                    <label for="username" class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5 flex items-center justify-between">
+                        <span>Логин в системе:</span>
+                        <span class="text-[10px] text-violet-400 font-semibold font-mono">stepyn, sokolov, novikov...</span>
+                    </label>
+                    <div class="relative">
+                        <input type="text" id="username" name="username" required placeholder="Введите ваш логин"
+                               class="w-full bg-[#080B1C] border border-violet-500/30 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 text-sm font-semibold focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 transition-all">
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label for="password" class="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                            Пароль:
+                        </label>
+                    </div>
+                    <div class="relative">
+                        <input type="password" id="password" name="password" required placeholder="Введите пароль"
+                               class="w-full bg-[#080B1C] border border-violet-500/30 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 text-sm font-semibold focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 transition-all">
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full btn-neon text-white font-black text-sm uppercase tracking-wider py-4 px-6 rounded-2xl transition-all transform active:scale-[0.98] flex items-center justify-center space-x-2">
+                    <span>✦ Войти в систему ОСО</span>
+                    <span>➔</span>
+                </button>
+            </form>
+
+            <!-- Registration button -->
+            <div class="text-center pt-1">
+                <a href="/register" class="inline-flex items-center space-x-2 text-xs font-bold text-violet-300 hover:text-white bg-violet-950/40 hover:bg-violet-900/50 px-5 py-2.5 rounded-full transition-all border border-violet-500/30 shadow-sm">
+                    <span>✨ Еще нет профиля? Подать заявку на регистрацию ➔</span>
+                </a>
+            </div>
+
+            <!-- Quick presets: Role testing -->
+            <div class="pt-5 border-t border-white/10">
+                <p class="text-xs font-black uppercase tracking-wider text-slate-400 mb-3 text-center flex items-center justify-center space-x-2">
+                    <span>⚡</span>
+                    <span>Быстрый тестовый вход (пароль: 1111)</span>
+                </p>
+                <div class="grid grid-cols-2 gap-2.5 text-xs">
+                    <!-- Root Admin (stepyn) -->
+                    <button type="button" onclick="quickFill('stepyn', '1111')"
+                            class="p-3.5 rounded-2xl border border-violet-500/40 bg-violet-950/40 hover:bg-violet-900/50 text-left transition-all group">
+                        <span class="font-black text-violet-300 block flex items-center space-x-1">
+                            <span>🛡️ Главный Админ (Ур. 4)</span>
+                        </span>
+                        <span class="text-slate-400 text-[11px] font-mono font-bold mt-0.5 block">stepyn / 1111</span>
+                    </button>
+
+                    <!-- Leadership -->
+                    <button type="button" onclick="quickFill('sokolov', '1111')"
+                            class="p-3.5 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-violet-500/30 text-left transition-all">
+                        <span class="font-black text-slate-200 block">👑 Руководство (Ур. 3)</span>
+                        <span class="text-slate-400 text-[11px] font-mono font-bold mt-0.5 block">sokolov / 1111</span>
+                    </button>
+
+                    <!-- Head of Dept -->
+                    <button type="button" onclick="quickFill('novikov', '1111')"
+                            class="p-3.5 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-violet-500/30 text-left transition-all">
+                        <span class="font-black text-slate-200 block">🎯 Глава цеха (Ур. 2)</span>
+                        <span class="text-slate-400 text-[11px] font-mono font-bold mt-0.5 block">novikov / 1111 (Дизайн)</span>
+                    </button>
+
+                    <!-- Member -->
+                    <button type="button" onclick="quickFill('pavlova', '1111')"
+                            class="p-3.5 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-violet-500/30 text-left transition-all">
+                        <span class="font-black text-slate-200 block">📸 Участник (Ур. 1)</span>
+                        <span class="text-slate-400 text-[11px] font-mono font-bold mt-0.5 block">pavlova / 1111 (Фото)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function quickFill(user, pass) {
+        document.getElementById('username').value = user;
+        document.getElementById('password').value = pass;
+    }
+</script>
+{% endblock %}

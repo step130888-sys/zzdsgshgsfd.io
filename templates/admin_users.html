@@ -1,0 +1,578 @@
+{% extends "base.html" %}
+
+{% block title %}Управление профилями (Ур. 4) | ОСО СГТУ • Медиацентр{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header Hero Banner: Dark Cosmic Cyber Glass Aesthetic -->
+    <div class="relative cyber-glass rounded-3xl border border-violet-500/20 p-6 md:p-8 shadow-2xl overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-[#0B0F24]/80">
+        <!-- Cosmic ambient glow -->
+        <div class="absolute -right-12 -top-12 w-72 h-72 bg-violet-600/20 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -left-12 -bottom-12 w-72 h-72 bg-sky-500/15 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute top-4 right-1/4 text-2xl text-violet-300 opacity-60 select-none pointer-events-none drop-shadow-[0_0_8px_rgba(167,139,250,0.8)]">✦</div>
+
+        <div class="space-y-2 relative z-10 max-w-2xl">
+            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30 text-[10px] font-black uppercase tracking-widest backdrop-blur-md shadow-[0_0_10px_rgba(139,92,246,0.2)]">
+                <span>🛡️</span>
+                <span>ОСО СГТУ • АДМИНИСТРИРОВАНИЕ (УР. 4)</span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-black uppercase tracking-tight text-white flex items-center gap-2">
+                <span>Управление участниками и заявками</span>
+            </h1>
+            <p class="text-sky-300 text-sm md:text-base font-semibold leading-relaxed">
+                Премодерация учетных записей, распределение по цехам и права доступа медиацентра
+            </p>
+        </div>
+
+        <div class="flex items-center space-x-3 relative z-10">
+            <span class="text-xs text-violet-200 bg-violet-500/15 backdrop-blur-md border border-violet-500/30 px-4 py-2.5 rounded-full shadow-inner flex items-center space-x-2">
+                <span>Администратор:</span>
+                <b class="text-white font-extrabold">{{ current_user.name }}</b>
+                <span class="text-cyan-300 font-mono font-bold">(@{{ current_user.username }})</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Section 1: Pending Registrations -->
+    <div class="cyber-glass rounded-3xl border border-violet-500/20 shadow-2xl overflow-hidden bg-[#0B0F24]/80">
+        <div class="px-6 md:px-8 py-5 border-b border-violet-500/15 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center space-x-3">
+                <span class="w-3 h-3 rounded-full bg-amber-400 {% if pending_users %}animate-ping shadow-[0_0_8px_#f59e0b]{% endif %}"></span>
+                <h2 class="text-base font-black text-white tracking-tight uppercase">
+                    Заявки на регистрацию (Ожидают одобрения)
+                </h2>
+                <span class="px-3 py-0.5 rounded-full text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
+                    {{ pending_users|length }}
+                </span>
+            </div>
+            <span class="text-xs text-slate-400 font-medium">Новые участники не могут войти, пока вы не одобрите их заявку</span>
+        </div>
+
+        {% if pending_users %}
+        <div class="divide-y divide-violet-500/15">
+            {% for u in pending_users %}
+            <div class="p-6 md:p-7 hover:bg-violet-950/20 transition-colors flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div class="space-y-1.5">
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <span class="font-black text-white text-base md:text-lg">{{ u.name }}</span>
+                        <span class="font-mono text-xs px-2.5 py-1 rounded-xl bg-[#060814] text-violet-300 border border-violet-500/30 font-bold">
+                            @{{ u.username }}
+                        </span>
+                        <span class="px-3 py-1 rounded-full text-xs font-black bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                            Цех: {{ u.role }}
+                        </span>
+                    </div>
+                    <div class="text-xs text-slate-400 flex items-center space-x-3 font-medium">
+                        <span>Telegram: <b class="text-white font-mono font-bold">{{ u.telegram_id or 'не указан' }}</b></span>
+                        <span>•</span>
+                        <span>Статус: <b class="text-amber-300 font-bold">Ожидает модерации</b></span>
+                    </div>
+                </div>
+
+                <!-- Approval / Rejection form -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <form action="/admin/users/{{ u.id }}/approve" method="POST" class="flex items-center space-x-2">
+                        <select name="access_level" class="text-xs font-bold bg-[#060814] border border-violet-500/30 text-white rounded-xl px-3 py-2 focus:outline-none focus:border-cyan-400">
+                            <option value="1" selected>Уровень 1 (Исполнитель)</option>
+                            <option value="2">Уровень 2 (Глава цеха)</option>
+                            <option value="3">Уровень 3 (Руководство)</option>
+                        </select>
+                        <button type="submit" class="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-black text-xs px-4 py-2 rounded-xl shadow-md transition-all hover:scale-105">
+                            ✓ Одобрить
+                        </button>
+                    </form>
+
+                    <form action="/admin/users/{{ u.id }}/reject" method="POST" onsubmit="return confirm('Отклонить заявку пользователя {{ u.name }}?');">
+                        <button type="submit" class="bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-black text-xs px-3.5 py-2 rounded-xl transition-all">
+                            ✕ Отклонить
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-10 text-center text-slate-500">
+            <div class="text-4xl mb-2 filter drop-shadow-[0_0_10px_rgba(167,139,250,0.3)]">✅</div>
+            <div class="text-sm font-bold text-slate-300">Нет новых заявок на модерацию</div>
+            <div class="text-slate-500 text-xs mt-1">Все зарегистрированные пользователи уже рассмотрены</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Section 2: Active Team Profiles -->
+    <div class="cyber-glass rounded-3xl border border-violet-500/20 shadow-2xl overflow-hidden bg-[#0B0F24]/80">
+        <!-- Шапка секции со счетчиком -->
+        <div class="px-6 md:px-8 py-5 border-b border-violet-500/15 flex flex-wrap items-center justify-between gap-4">
+            <div>
+                <div class="flex items-center space-x-3">
+                    <h2 class="text-base font-black text-white tracking-tight uppercase">
+                        Действующие профили команды
+                    </h2>
+                    <span id="adminBadgeCounter" class="bg-violet-500/15 text-violet-300 border border-violet-500/30 text-xs font-black px-3 py-0.5 rounded-full shadow-[0_0_8px_rgba(167,139,250,0.15)]">
+                        Показано: <span id="adminVisibleCount">{{ active_users|length }}</span> из {{ active_users|length }}
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400 mt-0.5 font-medium">Кликните по строке для быстрого редактирования ФИО, цеха, уровня или пароля.</p>
+            </div>
+
+            <!-- Кнопка сброса фильтров -->
+            <button id="resetAdminFiltersBtn" type="button" onclick="resetAdminFilters()"
+                    class="hidden text-xs font-bold text-rose-300 hover:text-white bg-rose-500/15 hover:bg-rose-500/25 px-3.5 py-1.5 rounded-xl border border-rose-500/30 transition-colors flex items-center space-x-1.5 shadow-sm">
+                <span>✕</span>
+                <span>Сбросить фильтры</span>
+            </button>
+        </div>
+
+        <!-- Панель фильтров по направлению и уровню -->
+        <div class="bg-[#060814]/70 border-b border-violet-500/15 px-6 md:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Фильтр по направлению -->
+                <div class="flex items-center space-x-1.5">
+                    <label for="adminFilterDirection" class="text-[11px] font-black uppercase tracking-wider text-slate-400">Направление:</label>
+                    <select id="adminFilterDirection" onchange="applyAdminFilters()"
+                            class="text-xs font-bold bg-[#0B0F24] border border-violet-500/30 text-white rounded-xl px-3 py-1.5 shadow-sm focus:border-cyan-400 focus:outline-none">
+                        <option value="all">Все направления (Все {{ active_users|length }})</option>
+                        <option value="Фото">📷 Фото</option>
+                        <option value="Дизайн">🎨 Дизайн</option>
+                        <option value="Видео">🎬 Видео</option>
+                        <option value="Моушен">✨ Моушен</option>
+                        <option value="СММ">📱 СММ</option>
+                        <option value="Руководство">👑 Руководство</option>
+                        <option value="Админ">⚡ Админ</option>
+                    </select>
+                </div>
+
+                <!-- Фильтр по уровню -->
+                <div class="flex items-center space-x-1.5">
+                    <label for="adminFilterLevel" class="text-[11px] font-black uppercase tracking-wider text-slate-400">Уровень:</label>
+                    <select id="adminFilterLevel" onchange="applyAdminFilters()"
+                            class="text-xs font-bold bg-[#0B0F24] border border-violet-500/30 text-white rounded-xl px-3 py-1.5 shadow-sm focus:border-cyan-400 focus:outline-none">
+                        <option value="all">Все уровни (1–4)</option>
+                        <option value="1">Уровень 1 (Исполнители)</option>
+                        <option value="2">Уровень 2 (Главы цехов)</option>
+                        <option value="3">Уровень 3 (Руководство)</option>
+                        <option value="4">Уровень 4 (Администраторы)</option>
+                    </select>
+                </div>
+
+                <!-- Сортировка -->
+                <div class="flex items-center space-x-1.5">
+                    <label for="adminSortOrder" class="text-[11px] font-black uppercase tracking-wider text-slate-400">Сортировка:</label>
+                    <select id="adminSortOrder" onchange="applyAdminFilters()"
+                            class="text-xs font-bold bg-[#0B0F24] border border-violet-500/30 text-white rounded-xl px-3 py-1.5 shadow-sm focus:border-cyan-400 focus:outline-none">
+                        <option value="default">По умолчанию (Ур. 4 → 1, ID)</option>
+                        <option value="direction">По направлению / цеху</option>
+                        <option value="name_asc">По имени (А → Я)</option>
+                        <option value="name_desc">По имени (Я → А)</option>
+                        <option value="score_desc">По рейтингу (сначала высокий ⭐)</option>
+                        <option value="completed_desc">По закрытым задачам (больше ✅)</option>
+                        <option value="level_desc">По уровню (от 4 к 1)</option>
+                        <option value="level_asc">По уровню (от 1 к 4)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Поиск -->
+            <div class="relative w-64">
+                <input id="adminFilterSearch" type="text" oninput="applyAdminFilters()"
+                       placeholder="🔍 Поиск по ФИО или логину..."
+                       class="w-full text-xs bg-[#0B0F24] border border-violet-500/30 rounded-xl pl-3.5 pr-8 py-1.5 text-white placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none shadow-sm">
+                <button type="button" onclick="document.getElementById('adminFilterSearch').value=''; applyAdminFilters();"
+                        class="absolute right-2.5 top-1.5 text-slate-500 hover:text-white text-xs">✕</button>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[750px]">
+                <thead>
+                    <tr class="bg-[#060814]/90 border-b border-violet-500/20 text-[11px] font-black uppercase tracking-wider text-violet-300 select-none">
+                        <th onclick="toggleSortHeaderAdmin('name')" class="py-3 px-6 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по имени">
+                            <span>ID & ФИО</span>
+                            <span id="admin-sort-icon-name" class="ml-1 text-[10px]">↕️</span>
+                        </th>
+                        <th class="py-3 px-6">Логин</th>
+                        <th onclick="toggleSortHeaderAdmin('direction')" class="py-3 px-6 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по цеху">
+                            <span>Направление</span>
+                            <span id="admin-sort-icon-direction" class="ml-1 text-[10px]">↕️</span>
+                        </th>
+                        <th onclick="toggleSortHeaderAdmin('level')" class="py-3 px-6 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по уровню">
+                            <span>Уровень</span>
+                            <span id="admin-sort-icon-level" class="ml-1 text-[10px]">↕️</span>
+                        </th>
+                        <th onclick="toggleSortHeaderAdmin('completed')" class="py-3 px-6 text-center cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по задачам">
+                            <span>Выполнено</span>
+                            <span id="admin-sort-icon-completed" class="ml-1 text-[10px]">↕️</span>
+                        </th>
+                        <th onclick="toggleSortHeaderAdmin('score')" class="py-3 px-6 text-center cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по рейтингу">
+                            <span>Рейтинг</span>
+                            <span id="admin-sort-icon-score" class="ml-1 text-[10px]">↕️</span>
+                        </th>
+                        <th class="py-3 px-6 text-right">Управление</th>
+                    </tr>
+                </thead>
+                <tbody id="adminUsersTbody" class="divide-y divide-violet-500/10 text-xs">
+                    {% for u in active_users %}
+                    <!-- Строка просмотра: клик открывает/закрывает панель редактирования (toggle) -->
+                    <tr id="row-view-{{ u.id }}"
+                        data-id="{{ u.id }}"
+                        data-name="{{ u.name }}"
+                        data-username="{{ u.username or '' }}"
+                        data-direction="{{ u.role }}"
+                        data-level="{{ u.access_level }}"
+                        data-completed="{{ u.completed_tasks }}"
+                        data-score="{{ u.average_score }}"
+                        onclick="toggleInlineEdit('{{ u.id }}')"
+                        class="user-view-row hover:bg-violet-950/30 transition-all cursor-pointer group select-none"
+                        title="Нажмите, чтобы открыть или закрыть панель редактирования">
+                        <td class="py-3.5 px-6 font-semibold text-white">
+                            <span class="text-slate-500 font-mono text-[11px] font-bold">#{{ u.id }}</span>
+                            <span class="hover:text-cyan-300 font-black ml-1 transition-colors">{{ u.name }}</span>
+                            <span class="text-[10px] text-cyan-300 font-bold ml-1 opacity-0 group-hover:opacity-100 transition-opacity">✎ редактировать</span>
+                        </td>
+
+                        <td class="py-3.5 px-6 font-mono font-bold text-slate-300">
+                            {{ u.username or '—' }}
+                        </td>
+
+                        <td class="py-3.5 px-6">
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-black border
+                                {% if u.role == 'Админ' %}bg-rose-500/15 text-rose-300 border-rose-500/30
+                                {% elif u.role == 'Руководство' %}bg-purple-500/15 text-purple-300 border-purple-500/30
+                                {% elif u.role == 'Фото' %}bg-amber-500/15 text-amber-300 border-amber-500/30
+                                {% elif u.role == 'Дизайн' %}bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30
+                                {% elif u.role == 'Видео' %}bg-violet-500/15 text-violet-300 border-violet-500/30
+                                {% elif u.role == 'Моушен' %}bg-sky-500/15 text-sky-300 border-sky-500/30
+                                {% elif u.role == 'СММ' %}bg-emerald-500/15 text-emerald-300 border-emerald-500/30
+                                {% else %}bg-slate-800 text-slate-300 border-slate-700{% endif %}">
+                                {{ u.role }}
+                            </span>
+                        </td>
+
+                        <td class="py-3.5 px-6">
+                            <span class="font-black text-slate-300">Ур. {{ u.access_level }}</span>
+                        </td>
+
+                        <td class="py-3.5 px-6 text-center font-black text-white">
+                            {{ u.completed_tasks }}
+                        </td>
+
+                        <td class="py-3.5 px-6 text-center font-black">
+                            {% if u.completed_tasks > 0 %}
+                            <span class="{% if u.average_score >= 8.5 %}text-emerald-400{% elif u.average_score >= 6.0 %}text-cyan-300{% else %}text-amber-400{% endif %}">
+                                {{ "%.1f"|format(u.average_score) }}
+                            </span>
+                            {% else %}
+                            <span class="text-slate-600 font-bold">—</span>
+                            {% endif %}
+                        </td>
+
+                        <td class="py-3.5 px-6 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                            {% if u.username == 'stepyn' %}
+                            <!-- Protected Root Admin -->
+                            <span class="inline-flex items-center space-x-1 px-3 py-1 rounded-full bg-[#060814] text-amber-300 border border-amber-500/40 text-[10px] font-black shadow-[0_0_10px_rgba(245,158,11,0.2)] tracking-wide">
+                                <span>🔒</span>
+                                <span>ROOT (НЕПРИКОСНОВЕНЕН)</span>
+                            </span>
+                            {% else %}
+                            <button type="button" onclick="event.stopPropagation(); toggleInlineEdit('{{ u.id }}')" class="text-cyan-300 hover:text-white bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 px-3 py-1 rounded-xl text-xs font-black transition-all mr-1.5 inline-block">
+                                ✏️ Изменить
+                            </button>
+                            <!-- Remove button -->
+                            <form action="/admin/users/{{ u.id }}/delete" method="POST" onsubmit="return confirm('Удалить профиль {{ u.name }} (@{{ u.username }})? Его задачи станут свободными.');" class="inline-block">
+                                <button type="submit" class="text-rose-400 hover:text-white hover:bg-rose-600/30 border border-rose-500/30 px-3 py-1 rounded-xl text-xs font-black transition-all">
+                                    🗑️ Удалить
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+
+                    <!-- Строка инлайн-редактирования -->
+                    <tr id="row-edit-{{ u.id }}" data-edit-id="{{ u.id }}" class="user-edit-row hidden bg-[#060814]/95 border-y-2 border-violet-500/40">
+                        <td colspan="7" class="p-5">
+                            <form action="/admin/users/{{ u.id }}/inline-edit" method="POST" class="flex flex-wrap items-end gap-3.5" onclick="event.stopPropagation()">
+                                <input type="hidden" name="redirect_to" value="/admin/users">
+
+                                <!-- Имя и Фамилия -->
+                                <div class="flex-grow min-w-[200px]">
+                                    <label class="block text-[11px] font-black uppercase text-violet-300 mb-1">Имя и Фамилия *</label>
+                                    <input type="text" name="name" value="{{ u.name }}" required
+                                           class="w-full text-xs font-bold px-3 py-2 bg-[#0B0F24] border border-violet-500/30 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 shadow-sm">
+                                </div>
+
+                                <!-- Логин (только инфо) -->
+                                <div class="w-32">
+                                    <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Логин</label>
+                                    <input type="text" value="{{ u.username or 'user_' ~ u.id }}" disabled
+                                           class="w-full text-xs font-mono font-bold px-3 py-2 bg-[#0B0F24]/60 border border-violet-500/20 rounded-xl text-slate-500">
+                                </div>
+
+                                <!-- Новый пароль -->
+                                <div class="w-48">
+                                    <label class="block text-[11px] font-black uppercase text-violet-300 mb-1">Новый пароль</label>
+                                    <input type="password" name="password" placeholder="Оставьте пустым..."
+                                           class="w-full text-xs px-3 py-2 bg-[#0B0F24] border border-violet-500/30 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 shadow-sm">
+                                </div>
+
+                                <!-- Цех / Направление -->
+                                <div class="w-36">
+                                    <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Цех</label>
+                                    <select name="role" class="w-full text-xs font-bold px-3 py-2 bg-[#0B0F24] border border-violet-500/30 text-white rounded-xl focus:ring-2 focus:ring-cyan-500">
+                                        <option value="Фото" {% if u.role == 'Фото' %}selected{% endif %}>Фото</option>
+                                        <option value="Дизайн" {% if u.role == 'Дизайн' %}selected{% endif %}>Дизайн</option>
+                                        <option value="Видео" {% if u.role == 'Видео' %}selected{% endif %}>Видео</option>
+                                        <option value="Моушен" {% if u.role == 'Моушен' %}selected{% endif %}>Моушен</option>
+                                        <option value="СММ" {% if u.role == 'СММ' %}selected{% endif %}>СММ</option>
+                                        <option value="Руководство" {% if u.role == 'Руководство' %}selected{% endif %}>Руководство</option>
+                                        <option value="Админ" {% if u.role == 'Админ' %}selected{% endif %}>Админ</option>
+                                    </select>
+                                </div>
+
+                                <!-- Уровень доступа -->
+                                <div class="w-28">
+                                    <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Уровень</label>
+                                    {% if u.username == 'stepyn' %}
+                                    <input type="text" value="Ур. 4 (Root)" disabled class="w-full text-xs font-bold px-2 py-2 bg-[#0B0F24]/60 border border-violet-500/20 rounded-xl text-slate-500">
+                                    <input type="hidden" name="access_level" value="4">
+                                    {% else %}
+                                    <select name="access_level" class="w-full text-xs font-bold px-3 py-2 bg-[#0B0F24] border border-violet-500/30 text-white rounded-xl focus:ring-2 focus:ring-cyan-500">
+                                        <option value="1" {% if u.access_level == 1 %}selected{% endif %}>Ур. 1</option>
+                                        <option value="2" {% if u.access_level == 2 %}selected{% endif %}>Ур. 2</option>
+                                        <option value="3" {% if u.access_level == 3 %}selected{% endif %}>Ур. 3</option>
+                                        <option value="4" {% if u.access_level == 4 %}selected{% endif %}>Ур. 4</option>
+                                    </select>
+                                    {% endif %}
+                                </div>
+
+                                <!-- Кнопки сохранения и отмены -->
+                                <div class="flex items-center space-x-2">
+                                    <button type="submit" class="btn-neon font-black text-xs px-4 py-2 rounded-xl shadow-md transition-all">
+                                        💾 Сохранить
+                                    </button>
+                                    <button type="button" onclick="toggleInlineEdit('{{ u.id }}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs px-3.5 py-2 rounded-xl transition-colors">
+                                        ✕ Отмена
+                                    </button>
+                                </div>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    <!-- Сообщение, если по фильтрам никто не найден -->
+                    <tr id="admin-empty-state" class="hidden">
+                        <td colspan="7" class="py-12 text-center text-slate-500">
+                            <div class="text-3xl mb-2 filter drop-shadow-[0_0_10px_rgba(167,139,250,0.3)]">🔍</div>
+                            <div class="text-sm font-black text-slate-300">Ни один профиль не найден</div>
+                            <div class="text-xs text-slate-500 mt-1 font-medium">Попробуйте изменить выбранное направление, уровень или строку поиска</div>
+                            <button type="button" onclick="resetAdminFilters()" class="mt-3 text-xs font-black btn-neon text-white px-4 py-2 rounded-xl transition-all">
+                                Сбросить все фильтры
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Переключение строки инлайн-редактирования
+    function toggleInlineEdit(userId) {
+        const viewRow = document.getElementById('row-view-' + userId);
+        const editRow = document.getElementById('row-edit-' + userId);
+        if (!viewRow || !editRow) return;
+
+        const isCurrentlyOpen = !editRow.classList.contains('hidden');
+
+        // Если панелька уже открыта — повторный клик закрывает её и сбрасывает введенные данные
+        if (isCurrentlyOpen) {
+            editRow.classList.add('hidden');
+            viewRow.classList.remove('bg-violet-950/40', 'border-l-4', 'border-cyan-400');
+            const form = editRow.querySelector('form');
+            if (form) form.reset();
+        } else {
+            // Закрываем любые другие открытые панели (аккуратный режим одного окна)
+            document.querySelectorAll('.user-edit-row').forEach(el => {
+                el.classList.add('hidden');
+                const f = el.querySelector('form');
+                if (f) f.reset();
+            });
+            document.querySelectorAll('.user-view-row').forEach(el => {
+                el.classList.remove('bg-violet-950/40', 'border-l-4', 'border-cyan-400');
+            });
+
+            // Раскрываем редактирование под выбранной строкой
+            editRow.classList.remove('hidden');
+            viewRow.classList.add('bg-violet-950/40', 'border-l-4', 'border-cyan-400');
+            const input = editRow.querySelector('input[name="name"]');
+            if (input) input.focus();
+        }
+    }
+
+    // Применение фильтров и сортировки для административной таблицы
+    function applyAdminFilters() {
+        const dirSelect = document.getElementById('adminFilterDirection');
+        const lvlSelect = document.getElementById('adminFilterLevel');
+        const sortSelect = document.getElementById('adminSortOrder');
+        const searchInput = document.getElementById('adminFilterSearch');
+        const resetBtn = document.getElementById('resetAdminFiltersBtn');
+
+        const direction = dirSelect ? dirSelect.value : 'all';
+        const level = lvlSelect ? lvlSelect.value : 'all';
+        const sort = sortSelect ? sortSelect.value : 'default';
+        const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+        const isFiltered = (direction !== 'all') || (level !== 'all') || (query !== '') || (sort !== 'default');
+        if (resetBtn) {
+            if (isFiltered) resetBtn.classList.remove('hidden');
+            else resetBtn.classList.add('hidden');
+        }
+
+        const tbody = document.getElementById('adminUsersTbody');
+        if (!tbody) return;
+
+        const viewRows = Array.from(tbody.querySelectorAll('.user-view-row'));
+        let visibleCount = 0;
+
+        viewRows.forEach(row => {
+            const rowId = row.getAttribute('data-id');
+            const rowDir = row.getAttribute('data-direction');
+            const rowLvl = row.getAttribute('data-level');
+            const rowName = (row.getAttribute('data-name') || '').toLowerCase();
+            const rowUsername = (row.getAttribute('data-username') || '').toLowerCase();
+            const editRow = document.getElementById('row-edit-' + rowId);
+
+            const matchesDir = (direction === 'all') || (rowDir === direction);
+            const matchesLvl = (level === 'all') || (rowLvl === level);
+            const matchesQuery = !query || rowName.includes(query) || rowUsername.includes(query);
+
+            if (matchesDir && matchesLvl && matchesQuery) {
+                row.classList.remove('hidden');
+                visibleCount++;
+            } else {
+                row.classList.add('hidden');
+                if (editRow) {
+                    editRow.classList.add('hidden');
+                    row.classList.remove('bg-violet-950/40', 'border-l-4', 'border-cyan-400');
+                }
+            }
+        });
+
+        // Счетчик
+        const countBadge = document.getElementById('adminVisibleCount');
+        if (countBadge) countBadge.textContent = visibleCount;
+
+        // Блок "Ничего не найдено"
+        const emptyRow = document.getElementById('admin-empty-state');
+        if (emptyRow) {
+            if (visibleCount === 0) emptyRow.classList.remove('hidden');
+            else emptyRow.classList.add('hidden');
+        }
+
+        updateHeaderSortIconsAdmin(sort);
+        sortAdminRows(sort);
+    }
+
+    // Сортировка строк в таблице администрирования
+    function sortAdminRows(sortOrder) {
+        const tbody = document.getElementById('adminUsersTbody');
+        if (!tbody) return;
+
+        const viewRows = Array.from(tbody.querySelectorAll('.user-view-row'));
+        const emptyRow = document.getElementById('admin-empty-state');
+
+        viewRows.sort((a, b) => {
+            const nameA = a.getAttribute('data-name') || '';
+            const nameB = b.getAttribute('data-name') || '';
+            const levelA = parseInt(a.getAttribute('data-level') || '0', 10);
+            const levelB = parseInt(b.getAttribute('data-level') || '0', 10);
+            const idA = parseInt(a.getAttribute('data-id') || '0', 10);
+            const idB = parseInt(b.getAttribute('data-id') || '0', 10);
+            const scoreA = parseFloat(a.getAttribute('data-score') || '0');
+            const scoreB = parseFloat(b.getAttribute('data-score') || '0');
+            const compA = parseInt(a.getAttribute('data-completed') || '0', 10);
+            const compB = parseInt(b.getAttribute('data-completed') || '0', 10);
+            const dirA = a.getAttribute('data-direction') || '';
+            const dirB = b.getAttribute('data-direction') || '';
+
+            switch (sortOrder) {
+                case 'direction':
+                    return dirA.localeCompare(dirB, 'ru') || levelB - levelA || idA - idB;
+                case 'name_asc':
+                    return nameA.localeCompare(nameB, 'ru');
+                case 'name_desc':
+                    return nameB.localeCompare(nameA, 'ru');
+                case 'score_desc':
+                    return (scoreB - scoreA) || (compB - compA) || nameA.localeCompare(nameB, 'ru');
+                case 'completed_desc':
+                    return (compB - compA) || (scoreB - scoreA) || nameA.localeCompare(nameB, 'ru');
+                case 'level_desc':
+                    return (levelB - levelA) || (idA - idB);
+                case 'level_asc':
+                    return (levelA - levelB) || (idA - idB);
+                case 'default':
+                default:
+                    return (levelB - levelA) || (idA - idB);
+            }
+        });
+
+        viewRows.forEach(row => {
+            const rowId = row.getAttribute('data-id');
+            const edit = document.getElementById('row-edit-' + rowId);
+            tbody.appendChild(row);
+            if (edit) tbody.appendChild(edit);
+        });
+
+        if (emptyRow) tbody.appendChild(emptyRow);
+    }
+
+    function toggleSortHeaderAdmin(column) {
+        const sortSelect = document.getElementById('adminSortOrder');
+        if (!sortSelect) return;
+        const current = sortSelect.value;
+
+        if (column === 'name') {
+            sortSelect.value = (current === 'name_asc') ? 'name_desc' : 'name_asc';
+        } else if (column === 'direction') {
+            sortSelect.value = (current === 'direction') ? 'default' : 'direction';
+        } else if (column === 'level') {
+            sortSelect.value = (current === 'level_desc') ? 'level_asc' : 'level_desc';
+        } else if (column === 'completed') {
+            sortSelect.value = (current === 'completed_desc') ? 'default' : 'completed_desc';
+        } else if (column === 'score') {
+            sortSelect.value = (current === 'score_desc') ? 'default' : 'score_desc';
+        }
+
+        applyAdminFilters();
+    }
+
+    function updateHeaderSortIconsAdmin(activeSort) {
+        const iconName = document.getElementById('admin-sort-icon-name');
+        const iconDir = document.getElementById('admin-sort-icon-direction');
+        const iconLvl = document.getElementById('admin-sort-icon-level');
+        const iconComp = document.getElementById('admin-sort-icon-completed');
+        const iconScore = document.getElementById('admin-sort-icon-score');
+
+        if (iconName) iconName.textContent = (activeSort === 'name_asc') ? '▲' : (activeSort === 'name_desc') ? '▼' : '↕️';
+        if (iconDir) iconDir.textContent = (activeSort === 'direction') ? '▼' : '↕️';
+        if (iconLvl) iconLvl.textContent = (activeSort === 'level_desc') ? '▼' : (activeSort === 'level_asc') ? '▲' : '↕️';
+        if (iconComp) iconComp.textContent = (activeSort === 'completed_desc') ? '▼' : '↕️';
+        if (iconScore) iconScore.textContent = (activeSort === 'score_desc') ? '▼' : '↕️';
+    }
+
+    function resetAdminFilters() {
+        const dirSelect = document.getElementById('adminFilterDirection');
+        const lvlSelect = document.getElementById('adminFilterLevel');
+        const sortSelect = document.getElementById('adminSortOrder');
+        const searchInput = document.getElementById('adminFilterSearch');
+
+        if (dirSelect) dirSelect.value = 'all';
+        if (lvlSelect) lvlSelect.value = 'all';
+        if (sortSelect) sortSelect.value = 'default';
+        if (searchInput) searchInput.value = '';
+
+        applyAdminFilters();
+    }
+</script>
+{% endblock %}

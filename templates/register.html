@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Регистрация | ОСО СГТУ • Медиацентр{% endblock %}
+
+{% block content %}
+<div class="max-w-xl mx-auto py-8">
+    <div class="cyber-glass-glow rounded-3xl border border-violet-500/30 overflow-hidden relative shadow-[0_20px_50px_rgba(0,0,0,0.8)]">
+        
+        <!-- Header Banner: Cosmic Glass + Logo Display -->
+        <div class="p-8 text-center relative overflow-hidden bg-gradient-to-b from-violet-950/40 via-cosmic-850 to-transparent border-b border-violet-500/20">
+            <div class="absolute top-5 right-8 text-xl text-violet-300 opacity-60 select-none animate-pulse">✦</div>
+            <div class="absolute bottom-5 left-8 text-lg text-cyan-300 opacity-60 select-none">✧</div>
+            
+            <div class="flex flex-col items-center justify-center">
+                <!-- Official Glowing OCO Logo in a Perfect Cosmic Circle -->
+                <div class="relative mb-4 group">
+                    <div class="absolute -inset-1.5 rounded-full bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-400 opacity-70 blur-lg group-hover:opacity-100 transition duration-300"></div>
+                    <div class="relative w-20 h-20 md:w-24 md:h-24 rounded-full p-[2px] bg-gradient-to-tr from-violet-500 via-fuchsia-500 to-cyan-400 shadow-[0_0_25px_rgba(139,92,246,0.6)]">
+                        <div class="w-full h-full rounded-full overflow-hidden bg-black flex items-center justify-center p-2">
+                            <img src="/uploads/oco_logo.png" alt="ОСО СГТУ" class="w-full h-full object-contain rounded-full transform group-hover:scale-105 transition-transform duration-300">
+                        </div>
+                    </div>
+                    <span class="absolute -bottom-1 -right-1 text-sm text-cyan-300 filter drop-shadow-[0_0_6px_rgba(56,189,248,0.9)] select-none">✦</span>
+                </div>
+                
+                <div class="mb-3">
+                    <span class="inline-flex items-center text-[10px] md:text-[11px] font-black uppercase tracking-widest px-4 py-1 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)] text-center">
+                        НОВЫЙ УЧАСТНИК КОМАНДЫ
+                    </span>
+                </div>
+                
+                <h1 class="text-2xl md:text-3xl font-black uppercase tracking-tight holo-text text-center leading-tight">
+                    АНКЕТА В МЕДИАЦЕНТР
+                </h1>
+                
+                <p class="font-script text-xl md:text-2xl text-cyan-300 mt-1.5 text-center">
+                    «Стань голосом и визуалом родного Политеха!»
+                </p>
+            </div>
+        </div>
+
+        <div class="p-8 space-y-6">
+            <form action="/register" method="POST" class="space-y-4">
+                <!-- Ф И -->
+                <div>
+                    <label for="name" class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                        Фамилия и Имя *
+                    </label>
+                    <input type="text" id="name" name="name" required placeholder="Например: Арсений Смирнов"
+                           class="w-full bg-[#080B1C] border border-violet-500/30 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 text-sm font-semibold focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 transition-all">
+                </div>
+
+                <!-- Логин и Пароль в две колонки -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="username" class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                            Логин *
+                        </label>
+                        <input type="text" id="username" name="username" required placeholder="smirnov"
+                               class="w-full bg-[#080B1C] border border-violet-500/30 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 text-sm font-semibold focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 transition-all">
+                    </div>
+
+                    <div>
+                        <label for="password" class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                            Пароль *
+                        </label>
+                        <input type="password" id="password" name="password" required placeholder="••••••••"
+                               class="w-full bg-[#080B1C] border border-violet-500/30 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 text-sm font-semibold focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 transition-all">
+                    </div>
+                </div>
+
+                <!-- Направление и Telegram -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="role" class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                            Цех / Направление *
+                        </label>
+                        <select id="role" name="role" required
+                                class="w-full bg-[#080B1C] border border-violet-500/30 rounded-2xl px-4 py-3.5 text-white text-sm font-bold focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 transition-all">
+                            <option value="Фото">📸 Фотографы</option>
+                            <option value="Дизайн">🎨 Дизайнеры</option>
+                            <option value="Видео">🎬 Видеографы</option>
+                            <option value="Моушен">✨ Моушн-дизайн</option>
+                            <option value="СММ">📱 SMM & Копирайтинг</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="telegram_id" class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+                            Telegram ник
+                        </label>
+                        <input type="text" id="telegram_id" name="telegram_id" placeholder="@username"
+                               class="w-full bg-[#080B1C] border border-violet-500/30 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 text-sm font-semibold focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 transition-all">
+                    </div>
+                </div>
+
+                <!-- Уведомление о премодерации -->
+                <div class="bg-violet-950/40 border border-violet-500/30 rounded-2xl p-4 text-xs text-violet-200 flex items-start space-x-3">
+                    <span class="text-xl flex-shrink-0">⏳</span>
+                    <div class="leading-relaxed font-medium">
+                        <b class="text-cyan-300 font-extrabold">Модерация профилей:</b> после отправки заявка поступает главному администратору (Уровень 4). Доступ откроется сразу после подтверждения аккаунта.
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full btn-neon text-white font-black text-sm uppercase tracking-wider py-4 px-6 rounded-2xl transition-all transform active:scale-[0.98] flex items-center justify-center space-x-2">
+                    <span>✦ Подать заявку в команду ОСО</span>
+                    <span>➔</span>
+                </button>
+            </form>
+
+            <div class="text-center pt-2 border-t border-white/10">
+                <a href="/login" class="text-xs font-bold text-violet-300 hover:text-white transition-colors">
+                    ← Уже есть аккаунт? Войти в систему
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

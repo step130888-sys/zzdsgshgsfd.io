@@ -1,0 +1,26 @@
+{
+  "name": "media_team_platform",
+  "version": "1.0.0",
+  "description": "Закрытая веб-платформа для координации участников университетского медиацентра (Фотографы, Дизайнеры, Видеографы, Моушн-дизайнеры, SMM, Руководство, Администраторы).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^18.0.6",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "googleapis": "^178.0.0",
+    "multer": "^2.4.0",
+    "node-telegram-bot-api": "^2.1.0",
+    "nunjucks": "^3.2.4",
+    "sqlite3": "^6.0.1"
+  }
+}

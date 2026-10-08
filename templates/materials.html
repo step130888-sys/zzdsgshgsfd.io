@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+
+{% block title %}База рабочих материалов | ОСО СГТУ • Медиацентр{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6">
+
+    <!-- Top Header: Dark Cosmic Cyber Theme with Logo -->
+    <div class="cyber-glass-glow rounded-3xl p-6 md:p-8 relative overflow-hidden border border-violet-500/30 shadow-[0_15px_40px_rgba(0,0,0,0.7)]">
+        <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-violet-600/15 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -left-10 -top-10 w-64 h-64 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="flex flex-wrap items-center justify-between gap-6 relative z-10">
+            <div class="space-y-2 max-w-2xl">
+                <div class="inline-flex items-center space-x-2 px-3.5 py-1 rounded-full text-xs font-black bg-violet-500/20 text-violet-300 border border-violet-500/30 backdrop-blur-md">
+                    <div class="w-4 h-4 rounded-full overflow-hidden bg-black flex items-center justify-center border border-violet-400/40 p-0.5 flex-shrink-0">
+                        <img src="/uploads/oco_logo.png" alt="ОСО" class="w-full h-full object-contain rounded-full">
+                    </div>
+                    <span>ОСО СГТУ • ЕДИНЫЙ ХАБ РЕСУРСОВ</span>
+                </div>
+                <h1 class="text-2xl md:text-3xl font-black uppercase tracking-tight holo-text">
+                    База рабочих материалов
+                </h1>
+                <p class="font-script text-xl text-cyan-300 leading-none">
+                    «Все исходники, брендбуки, пресеты и шаблоны для твоих лучших работ»
+                </p>
+                <p class="text-xs text-slate-400 leading-relaxed pt-1">
+                    Официальные векторные логотипы ОСО и СГТУ, брендбук, шаблоны афиш Science Slam, пресеты Lightroom, LUTs для монтажа, шрифты и гайдлайны цехов.
+                </p>
+            </div>
+
+            <!-- Upload Button for Level 3 and 4 -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                {% if current_user.access_level >= 3 %}
+                <button type="button"
+                        onclick="openAddMaterialModal()"
+                        class="btn-neon text-white font-black text-xs md:text-sm px-6 py-3.5 rounded-full transition-all flex items-center space-x-2 cursor-pointer">
+                    <span class="text-lg leading-none">+</span>
+                    <span>Загрузить материал</span>
+                </button>
+                {% else %}
+                <div class="bg-white/5 border border-white/10 rounded-full px-4 py-2.5 text-xs text-slate-400 flex items-center space-x-2 font-medium">
+                    <span>🔒</span>
+                    <span>Загрузка доступна руководству (3–4 ур.)</span>
+                </div>
+                {% endif %}
+
+                <a href="{{ gdrive_folder_url or 'https://drive.google.com/drive/folders/1hfpxSnI4AtbHV9MPtnEkIVAoII1VP0g7' }}" target="_blank"
+                   class="bg-white/5 hover:bg-white/10 text-white border border-violet-500/30 font-bold text-xs px-4 py-3 rounded-full transition-all flex items-center space-x-1.5 shadow-sm">
+                    <span>📁</span>
+                    <span>Google Диск команды ↗</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Direction Stats Quick Pill Bar -->
+        <div class="mt-6 pt-6 border-t border-white/10 flex flex-wrap gap-2 text-xs">
+            <span class="text-slate-400 py-1 font-semibold">Направления:</span>
+            <span class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-semibold">📸 Фото ({{ counts.get('Фото', 0) }})</span>
+            <span class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-semibold">🎨 Дизайн ({{ counts.get('Дизайн', 0) }})</span>
+            <span class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-semibold">🎬 Видео ({{ counts.get('Видео', 0) }})</span>
+            <span class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-semibold">✨ Моушен ({{ counts.get('Моушен', 0) }})</span>
+            <span class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-semibold">📱 СММ ({{ counts.get('СММ', 0) }})</span>
+            <span class="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-300 font-semibold">🏛️ Общее ({{ counts.get('Общее', 0) }})</span>
+        </div>
+    </div>
+
+    <!-- Alert Messages -->
+    {% if msg %}
+    <div class="p-4 rounded-2xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 text-xs font-bold flex items-center justify-between shadow-lg backdrop-blur-md">
+        <div class="flex items-center space-x-2">
+            <span>✅</span>
+            <span>{{ msg }}</span>
+        </div>
+        <button onclick="this.parentElement.remove()" class="text-emerald-400 hover:text-emerald-300 font-bold">×</button>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="p-4 rounded-2xl bg-rose-950/70 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center justify-between shadow-lg backdrop-blur-md">
+        <div class="flex items-center space-x-2">
+            <span>⚠️</span>
+            <span>{{ error }}</span>
+        </div>
+        <button onclick="this.parentElement.remove()" class="text-rose-400 hover:text-rose-300 font-bold">×</button>
+    </div>
+    {% endif %}
+
+    <!-- Filter Tabs by Direction -->
+    <div class="cyber-glass rounded-2xl p-3 border border-violet-500/20 shadow-sm flex flex-wrap items-center justify-between gap-3">
+        <!-- Direction Tabs -->
+        <div class="flex flex-wrap items-center gap-1.5">
+            <a href="/materials"
+               class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {% if not selected_direction %}bg-gradient-to-r from-violet-600/50 to-blue-600/50 text-white border border-violet-400/50 shadow-[0_0_15px_rgba(139,92,246,0.3)]{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
+                🌟 Все материалы ({{ total_count }})
+            </a>
+            <a href="/materials?direction=Фото"
+               class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {% if selected_direction == 'Фото' %}bg-amber-950/50 text-amber-300 border border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.25)]{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
+                📸 Фотографы ({{ counts.get('Фото', 0) }})
+            </a>
+            <a href="/materials?direction=Дизайн"
+               class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {% if selected_direction == 'Дизайн' %}bg-purple-950/50 text-purple-300 border border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.25)]{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
+                🎨 Дизайнеры ({{ counts.get('Дизайн', 0) }})
+            </a>
+            <a href="/materials?direction=Видео"
+               class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {% if selected_direction == 'Видео' %}bg-rose-950/50 text-rose-300 border border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.25)]{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
+                🎬 Видеографы ({{ counts.get('Видео', 0) }})
+            </a>
+            <a href="/materials?direction=Моушен"
+               class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {% if selected_direction == 'Моушен' %}bg-sky-950/50 text-sky-300 border border-sky-500/50 shadow-[0_0_15px_rgba(56,189,248,0.25)]{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
+                ✨ Моушн-дизайн ({{ counts.get('Моушен', 0) }})
+            </a>
+            <a href="/materials?direction=СММ"
+               class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {% if selected_direction == 'СММ' %}bg-emerald-950/50 text-emerald-300 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.25)]{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
+                📱 СММ ({{ counts.get('СММ', 0) }})
+            </a>
+            <a href="/materials?direction=Общее"
+               class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all {% if selected_direction == 'Общее' %}bg-white/10 text-white border border-white/20{% else %}text-slate-400 hover:bg-white/5 hover:text-white border border-transparent{% endif %}">
+                🏛️ Брендбук / Общее ({{ counts.get('Общее', 0) }})
+            </a>
+        </div>
+
+        <!-- Category Dropdown / Search Filter -->
+        <form action="/materials" method="GET" class="flex items-center space-x-2">
+            {% if selected_direction %}
+            <input type="hidden" name="direction" value="{{ selected_direction }}">
+            {% endif %}
+
+            <select name="category" onchange="this.form.submit()" class="text-xs font-bold px-3 py-2 bg-[#080B1C] border border-violet-500/30 text-white rounded-xl focus:outline-none focus:border-violet-400">
+                <option value="">Все категории</option>
+                <option value="Шаблоны" {% if selected_category == 'Шаблоны' %}selected{% endif %}>Шаблоны</option>
+                <option value="Пресеты" {% if selected_category == 'Пресеты' %}selected{% endif %}>Пресеты</option>
+                <option value="Шрифты" {% if selected_category == 'Шрифты' %}selected{% endif %}>Шрифты</option>
+                <option value="Логотипы" {% if selected_category == 'Логотипы' %}selected{% endif %}>Логотипы</option>
+                <option value="Звуки" {% if selected_category == 'Звуки' %}selected{% endif %}>Звуки и Музыка</option>
+                <option value="Гайдлайны" {% if selected_category == 'Гайдлайны' %}selected{% endif %}>Гайдлайны и памятки</option>
+                <option value="Исходники" {% if selected_category == 'Исходники' %}selected{% endif %}>Исходники</option>
+            </select>
+
+            {% if selected_direction or selected_category %}
+            <a href="/materials" class="text-xs text-rose-400 hover:text-rose-300 font-bold px-2 py-1.5 hover:underline" title="Сбросить все фильтры">
+                Сброс ✕
+            </a>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- Materials Grid -->
+    {% if materials %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for m in materials %}
+        <div class="cyber-glass rounded-3xl border border-violet-500/20 hover:border-violet-400/50 shadow-md hover:shadow-[0_0_25px_rgba(139,92,246,0.2)] transition-all flex flex-col justify-between overflow-hidden group">
+
+            <!-- Card Header & Content -->
+            <div class="p-6 space-y-3.5">
+                <!-- Top Badges -->
+                <div class="flex items-center justify-between gap-2">
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold
+                        {% if m.direction == 'Фото' %}bg-amber-950/40 text-amber-300 border border-amber-500/40
+                        {% elif m.direction == 'Дизайн' %}bg-purple-950/40 text-purple-300 border border-purple-500/40
+                        {% elif m.direction == 'Видео' %}bg-rose-950/40 text-rose-300 border border-rose-500/40
+                        {% elif m.direction == 'Моушен' %}bg-sky-950/40 text-sky-300 border border-sky-500/40
+                        {% elif m.direction == 'СММ' %}bg-emerald-950/40 text-emerald-300 border border-emerald-500/40
+                        {% else %}bg-white/5 text-slate-300 border border-white/10{% endif %}">
+                        {% if m.direction == 'Фото' %}📸 Фотографы
+                        {% elif m.direction == 'Дизайн' %}🎨 Дизайнеры
+                        {% elif m.direction == 'Видео' %}🎬 Видеографы
+                        {% elif m.direction == 'Моушен' %}✨ Моушн-дизайн
+                        {% elif m.direction == 'СММ' %}📱 СММ
+                        {% else %}🏛️ {{ m.direction }}{% endif %}
+                    </span>
+
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white/5 text-slate-400 border border-white/10">
+                        {{ m.category }}
+                    </span>
+                </div>
+
+                <!-- Title -->
+                <h3 class="font-bold text-white text-base leading-snug group-hover:text-violet-300 transition-colors">
+                    {{ m.title }}
+                </h3>
+
+                <!-- Description -->
+                {% if m.description %}
+                <p class="text-xs text-slate-400 leading-relaxed whitespace-pre-line line-clamp-3 font-medium">
+                    {{ m.description }}
+                </p>
+                {% endif %}
+            </div>
+
+            <!-- Card Footer: Download Link & Metadata -->
+            <div class="px-6 py-4 bg-[#080B1C]/60 border-t border-white/5 space-y-3">
+                <!-- Action Button (Download / Open) -->
+                <div>
+                    {% if m.file_link.startswith('/uploads/') %}
+                    <a href="{{ m.file_link }}" target="_blank" download
+                       class="w-full btn-neon text-white font-black text-xs py-2.5 px-3 rounded-xl transition-all flex items-center justify-center space-x-2">
+                        <span>💾</span>
+                        <span>Скачать: {{ m.file_name or 'Файл материала' }}</span>
+                    </a>
+                    {% else %}
+                    <a href="{{ m.file_link }}" target="_blank"
+                       class="w-full bg-white/5 hover:bg-violet-950/50 hover:border-violet-500/40 text-white font-bold text-xs py-2.5 px-3 rounded-xl border border-white/10 transition-colors flex items-center justify-center space-x-2 shadow-sm">
+                        <span>🔗</span>
+                        <span class="truncate max-w-[200px]">Открыть {{ m.file_name or 'ресурс' }}</span>
+                        <span>↗</span>
+                    </a>
+                    {% endif %}
+                </div>
+
+                <!-- Author info & Delete button (for 3-4 lvl) -->
+                <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <div class="flex items-center space-x-1.5 truncate">
+                        <span>👤</span>
+                        <span class="truncate">{{ m.uploaded_by.name if m.uploaded_by else 'Руководство' }}</span>
+                        <span>•</span>
+                        <span>{{ m.created_at.strftime('%d.%m.%Y') if m.created_at else '' }}</span>
+                    </div>
+
+                    {% if current_user.access_level >= 3 %}
+                    <form action="/materials/{{ m.id }}/delete" method="POST" onsubmit="return confirm('Вы уверены, что хотите удалить материал «{{ m.title|replace('\'', '\\\'') }}»?')">
+                        <button type="submit" class="text-rose-400 hover:text-rose-300 font-bold hover:underline ml-2" title="Удалить материал">
+                            Удалить ✕
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="cyber-glass rounded-3xl border border-violet-500/20 p-12 text-center shadow-lg space-y-4">
+        <div class="w-16 h-16 rounded-2xl bg-white/5 text-slate-400 flex items-center justify-center text-3xl mx-auto border border-white/10">
+            📂
+        </div>
+        <div class="space-y-1">
+            <h3 class="text-base font-bold text-white">Материалы не найдены</h3>
+            <p class="text-xs text-slate-400 max-w-sm mx-auto">
+                В выбранном направлении пока нет добавленных файлов. Выберите другое направление или сбросьте фильтры.
+            </p>
+        </div>
+        {% if current_user.access_level >= 3 %}
+        <button type="button" onclick="openAddMaterialModal()" class="btn-neon text-white font-black text-xs px-5 py-2.5 rounded-full transition-all">
+            + Загрузить первый материал
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: ADD MATERIAL (FOR LEVELS 3 & 4)                   -->
+<!-- ======================================================== -->
+{% if current_user.access_level >= 3 %}
+<div id="addMaterialModal" class="fixed inset-0 bg-black/75 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="cyber-glass-glow rounded-3xl max-w-lg w-full p-6 md:p-7 shadow-2xl border border-violet-500/40 text-white max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-white/10 mb-5">
+            <div>
+                <h3 class="text-lg font-black holo-text">Загрузить рабочий материал</h3>
+                <p class="text-xs text-slate-400 mt-0.5">Добавьте полезный ресурс в базу материалов для цехов команды</p>
+            </div>
+            <button type="button" onclick="closeAddMaterialModal()" class="text-slate-400 hover:text-white font-bold text-lg p-1">✕</button>
+        </div>
+
+        <form action="/materials/create" method="POST" enctype="multipart/form-data" class="space-y-4">
+
+            <!-- Название -->
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Название материала *</label>
+                <input type="text" name="title" required placeholder="Например: Пресеты Lightroom для репортажей (СГТУ 2026)"
+                       class="w-full text-xs px-4 py-3 rounded-2xl bg-[#080B1C] border border-violet-500/30 text-white placeholder-slate-500 focus:outline-none focus:border-violet-400">
+            </div>
+
+            <!-- Направление (цех) и Категория -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">Направление (Цех) *</label>
+                    <select name="direction" required class="w-full text-xs font-semibold px-3 py-3 rounded-2xl bg-[#080B1C] border border-violet-500/30 text-white focus:outline-none focus:border-violet-400">
+                        <option value="Фото">📸 Фотографам</option>
+                        <option value="Дизайн">🎨 Дизайнерам</option>
+                        <option value="Видео">🎬 Видеографам</option>
+                        <option value="Моушен">✨ Моушн-дизайн</option>
+                        <option value="СММ">📱 СММ</option>
+                        <option value="Общее">🏛️ Общее / Брендбук</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-300 mb-1">Тип материала *</label>
+                    <select name="category" required class="w-full text-xs font-semibold px-3 py-3 rounded-2xl bg-[#080B1C] border border-violet-500/30 text-white focus:outline-none focus:border-violet-400">
+                        <option value="Шаблоны">Шаблоны</option>
+                        <option value="Пресеты">Пресеты</option>
+                        <option value="Шрифты">Шрифты</option>
+                        <option value="Логотипы">Логотипы</option>
+                        <option value="Звуки">Звуки / Музыка</option>
+                        <option value="Гайдлайны">Гайдлайны и памятки</option>
+                        <option value="Исходники">Исходники</option>
+                        <option value="Разное">Разное</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Описание -->
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Описание и инструкция по использованию</label>
+                <textarea name="description" rows="3" placeholder="Что внутри, для каких задач использовать, как применить..."
+                          class="w-full text-xs px-4 py-3 rounded-2xl bg-[#080B1C] border border-violet-500/30 text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 resize-none"></textarea>
+            </div>
+
+            <!-- Способ 1: Загрузить файл с устройства -->
+            <div class="bg-violet-950/30 p-4 rounded-2xl border border-violet-500/30 space-y-2">
+                <div class="text-xs font-bold text-violet-300 flex items-center space-x-1.5">
+                    <span>📎</span>
+                    <span>Вариант А: Загрузить файл с компьютера / телефона</span>
+                </div>
+                <input type="file" name="file_upload"
+                       class="block w-full text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-violet-600 file:text-white hover:file:bg-violet-500 cursor-pointer border border-white/10 rounded-xl bg-[#080B1C] p-1">
+                <div class="text-[10px] text-slate-500">Поддерживаются архивы zip, rar, pdf, psd, ttf, otf, cube, xmp, mp3, wav, png и др.</div>
+            </div>
+
+            <!-- Способ 2: Внешняя ссылка -->
+            <div class="bg-white/5 p-4 rounded-2xl border border-white/10 space-y-2">
+                <div class="text-xs font-bold text-slate-300 flex items-center space-x-1.5">
+                    <span>🔗</span>
+                    <span>Вариант Б: Прямая ссылка (Google Диск, Figma, Яндекс Диск)</span>
+                </div>
+                <input type="url" name="file_link" placeholder="https://drive.google.com/... или https://www.figma.com/..."
+                       class="w-full text-xs px-3.5 py-2.5 rounded-xl border border-violet-500/30 bg-[#080B1C] text-white focus:outline-none focus:border-violet-400">
+            </div>
+
+            <div class="flex items-center justify-end space-x-3 pt-3 border-t border-white/10">
+                <button type="button" onclick="closeAddMaterialModal()" class="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">
+                    Отмена
+                </button>
+                <button type="submit" class="btn-neon text-white font-black text-xs px-5 py-2.5 rounded-xl transition-all">
+                    Опубликовать материал
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openAddMaterialModal() {
+        const modal = document.getElementById('addMaterialModal');
+        if (modal) modal.classList.remove('hidden');
+    }
+    function closeAddMaterialModal() {
+        const modal = document.getElementById('addMaterialModal');
+        if (modal) modal.classList.add('hidden');
+    }
+</script>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,712 @@
+{% extends "base.html" %}
+
+{% block title %}Профиль {{ profile_user.name }} | ОСО СГТУ • Медиацентр{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- User Header Card: Dark Cosmic Cyber Glass Aesthetic -->
+    <div class="cyber-glass rounded-3xl border border-violet-500/20 p-8 shadow-2xl relative overflow-hidden">
+        <!-- Glowing ambient cosmic background lights -->
+        <div class="absolute -right-12 -top-12 w-72 h-72 bg-violet-600/15 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -left-12 -bottom-12 w-72 h-72 bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="flex flex-col md:flex-row md:items-start justify-between gap-6 relative z-10">
+            <div class="flex items-center space-x-6">
+                <!-- Cosmic Avatar with radiant glowing border & star motif -->
+                <div class="relative">
+                    <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-[#3B0764] via-[#6D28D9] to-[#0284C7] text-white flex items-center justify-center font-black text-3xl shadow-xl shadow-violet-950/60 border-2 border-violet-400/40 relative">
+                        <span class="holo-text">{{ profile_user.name[0] }}</span>
+                    </div>
+                    <span class="absolute -bottom-2 -right-2 text-xl select-none filter drop-shadow-[0_0_8px_rgba(167,139,250,0.8)]">✦</span>
+                </div>
+
+                <div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <h1 class="text-2xl md:text-3xl font-black uppercase tracking-tight text-white flex items-center gap-2">
+                            <span>{{ profile_user.name }}</span>
+                        </h1>
+                        <span class="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-violet-500/15 text-violet-300 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]">
+                            Уровень {{ profile_user.access_level }}
+                        </span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3 mt-2.5 text-xs text-slate-400 font-semibold">
+                        <span class="text-sky-300 flex items-center space-x-1.5 bg-sky-500/10 px-2.5 py-0.5 rounded-lg border border-sky-500/20">
+                            <span class="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_6px_#38bdf8]"></span>
+                            <span>Цех: <b class="font-extrabold text-white">{{ profile_user.role }}</b></span>
+                        </span>
+                        <span class="text-slate-600">•</span>
+                        <div class="flex items-center space-x-1.5 text-slate-300">
+                            <span>Telegram:</span>
+                            {% if profile_user.telegram_id and (profile_user.telegram_id.isdigit() or profile_user.telegram_id.startswith('-')) %}
+                            <span class="font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/25">
+                                ✅ {{ profile_user.telegram_id }}
+                            </span>
+                            {% else %}
+                            <span class="font-mono text-violet-300 font-bold bg-violet-500/10 px-2 py-0.5 rounded-md border border-violet-500/20">
+                                {{ profile_user.telegram_id or 'не привязан' }}
+                            </span>
+                            {% endif %}
+
+                            {% if profile_user.id == current_user.id %}
+                            <a href="https://t.me/ping_sstu_bot?start=bind_{{ profile_user.id }}" target="_blank"
+                               class="text-[11px] font-bold text-sky-200 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/30 px-3 py-1 rounded-full transition-all ml-1 shadow-[0_0_10px_rgba(56,189,248,0.2)]"
+                               title="Нажмите для автоматической привязки через Telegram-бота">
+                                📲 Подключить бота
+                            </a>
+                            <button type="button" onclick="document.getElementById('editTgModal').classList.remove('hidden')"
+                                    class="text-slate-400 hover:text-cyan-300 text-xs ml-1 transition-colors" title="Изменить Telegram ID вручную">
+                                ✏️
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Role Badge & Admin Edit Button -->
+            <div class="text-left md:text-right space-y-2">
+                <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Статус в ОСО СГТУ</div>
+                    <div class="text-xs font-extrabold text-violet-300 uppercase mt-0.5 bg-violet-500/15 px-3 py-1 rounded-full border border-violet-500/30 inline-block shadow-[0_0_12px_rgba(167,139,250,0.15)]">
+                        {% if profile_user.access_level == 1 %}Участник актива
+                        {% elif profile_user.access_level == 2 %}Глава направления
+                        {% elif profile_user.access_level == 3 %}Руководитель медиацентра
+                        {% elif profile_user.access_level == 4 %}Администратор системы
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if current_user.access_level == 4 %}
+                <div>
+                    <button onclick="document.getElementById('editProfileModal').classList.remove('hidden')"
+                            class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.15)] transition-all">
+                        <span>✏️ Редактировать (Админ)</span>
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Metrics Grid: Dark Glass Tiles with Luminous Numbers -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-6 border-t border-violet-500/15">
+            <div class="cyber-glass rounded-2xl p-4 border border-violet-500/20 bg-[#0B0F24]/50">
+                <div class="text-[10px] font-bold text-violet-400 uppercase tracking-wider">Закрыто задач</div>
+                <div class="text-3xl font-black text-white mt-1">{{ profile_user.completed_tasks }}</div>
+                <div class="text-[11px] text-slate-400 mt-1 font-semibold">Успешно выполнены</div>
+            </div>
+
+            <div class="cyber-glass rounded-2xl p-4 border border-violet-500/20 bg-[#0B0F24]/50">
+                <div class="text-[10px] font-bold text-violet-400 uppercase tracking-wider">Средний балл</div>
+                <div class="flex items-baseline space-x-1 mt-1">
+                    <span class="text-3xl font-black {% if profile_user.average_score >= 8.5 %}text-emerald-400{% elif profile_user.average_score >= 6.0 %}text-sky-400{% else %}text-amber-400{% endif %}">
+                        {{ "%.1f"|format(profile_user.average_score) }}
+                    </span>
+                    <span class="text-xs font-bold text-slate-500">/ 10.0</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-1 font-semibold">Рейтинг качества</div>
+            </div>
+
+            <div class="cyber-glass rounded-2xl p-4 border border-violet-500/20 bg-[#0B0F24]/50">
+                <div class="text-[10px] font-bold text-sky-400 uppercase tracking-wider">В работе сейчас</div>
+                <div class="text-3xl font-black text-sky-300 mt-1">{{ in_progress_count }}</div>
+                <div class="text-[11px] text-slate-400 mt-1">Требуют сдачи</div>
+            </div>
+
+            <div class="cyber-glass rounded-2xl p-4 border border-violet-500/20 bg-[#0B0F24]/50">
+                <div class="text-[10px] font-bold text-amber-400 uppercase tracking-wider">На проверке</div>
+                <div class="text-3xl font-black text-amber-300 mt-1">{{ review_count }}</div>
+                <div class="text-[11px] text-slate-400 mt-1">Ожидают оценки</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Tasks Section -->
+    <div class="cyber-glass rounded-2xl border border-violet-500/20 overflow-hidden shadow-2xl">
+        <div class="px-8 py-5 border-b border-violet-500/15 flex items-center justify-between bg-violet-950/20">
+            <h2 class="text-lg font-black text-white tracking-tight flex items-center space-x-2">
+                <span>Задачи пользователя</span>
+                <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">{{ user_tasks|length }}</span>
+            </h2>
+            <a href="/content-plan" class="text-xs font-bold text-sky-400 hover:text-sky-300 transition-colors flex items-center space-x-1">
+                <span>+ Найти новые задачи в контент-плане</span>
+                <span>→</span>
+            </a>
+        </div>
+
+        {% if user_tasks %}
+        <div class="divide-y divide-violet-500/15">
+            {% for task in user_tasks %}
+            <div class="p-6 hover:bg-violet-950/20 transition-colors">
+                <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
+                    <div class="flex-grow space-y-2.5">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-xs font-mono font-bold text-slate-500">#{{ task.id }}</span>
+                            <span class="px-2.5 py-0.5 rounded text-xs font-bold border
+                                {% if task.direction == 'Фото' %}bg-sky-500/10 text-sky-400 border-sky-500/30
+                                {% elif task.direction == 'Дизайн' %}bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/30
+                                {% elif task.direction == 'Видео' %}bg-violet-500/10 text-violet-400 border-violet-500/30
+                                {% elif task.direction == 'Моушен' %}bg-indigo-500/10 text-indigo-400 border-indigo-500/30
+                                {% elif task.direction == 'СММ' %}bg-pink-500/10 text-pink-400 border-pink-500/30
+                                {% else %}bg-slate-800 text-slate-300 border-slate-700{% endif %}">
+                                {{ task.direction }}
+                            </span>
+
+                            <!-- Status Badge -->
+                            {% if task.status == 'in_progress' %}
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30 shadow-[0_0_8px_rgba(56,189,248,0.2)]">
+                                ⏳ В работе
+                            </span>
+                            {% elif task.status == 'review' %}
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
+                                🔍 На проверке
+                            </span>
+                            {% elif task.status == 'rework' %}
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.2)]">
+                                🔄 На доработке
+                            </span>
+                            {% elif task.status == 'done' %}
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]">
+                                ✅ Завершена
+                            </span>
+                            {% endif %}
+
+                            <!-- Deadline Badge -->
+                            {% if task.deadline %}
+                            <span class="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-bold
+                                {% if task.status == 'done' %}bg-slate-800 text-slate-400 border border-slate-700
+                                {% else %}bg-violet-500/15 text-violet-300 border border-violet-500/30 shadow-[0_0_8px_rgba(167,139,250,0.15)]{% endif %}"
+                                title="Срок сдачи задачи">
+                                <span>⏰ Дедлайн:</span>
+                                <span>{{ task.deadline.replace('T', ' ') }}</span>
+                            </span>
+                            {% endif %}
+
+                            {% if current_user.access_level >= 3 %}
+                            <button type="button"
+                                    onclick="openProfileDeadlineModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}', '{{ task.deadline or '' }}')"
+                                    class="text-[11px] text-violet-400 hover:text-violet-300 font-bold hover:underline flex items-center space-x-1 transition-colors">
+                                <span>✏️</span>
+                                <span>{{ 'Изменить дедлайн' if task.deadline else '+ Поставить дедлайн' }}</span>
+                            </button>
+                            {% endif %}
+                        </div>
+
+                        <div class="flex items-center space-x-2.5">
+                            <a href="/task/{{ task.id }}" class="text-base font-bold text-white hover:text-violet-300 hover:underline transition-colors" title="Открыть задачу и чат">
+                                {{ task.title }}
+                            </a>
+                            {% set comment_count = task.comments|length if task.comments else 0 %}
+                            <a href="/task/{{ task.id }}#comments" class="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-bold {% if comment_count > 0 %}bg-violet-500/20 text-violet-300 border border-violet-500/30 hover:bg-violet-500/30{% else %}bg-[#0B0F24]/80 text-slate-500 hover:text-violet-300 border border-violet-500/15{% endif %} transition-all" title="Чат обсуждения задачи">
+                                <span>💬</span>
+                                <span>{{ comment_count }}</span>
+                            </a>
+                        </div>
+                        <p class="text-sm text-slate-400 line-clamp-2">{{ task.description }}</p>
+
+                        {% if task.rework_notes and task.status == 'rework' %}
+                        <div class="mt-2 text-xs text-rose-300 bg-rose-500/10 p-3 rounded-xl border border-rose-500/25 leading-snug">
+                            <span class="font-bold">⚠️ Замечания руководителя по доработке:</span> {{ task.rework_notes }}
+                        </div>
+                        {% endif %}
+
+                        <!-- Attached Link or Score info -->
+                        {% if task.file_link %}
+                        <div class="pt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <span class="font-bold text-slate-400">Сданный материал:</span>
+                            {% if task.file_link.startswith('/uploads/') %}
+                            <a href="{{ task.file_link }}" target="_blank" download class="inline-flex items-center space-x-1 font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 px-2.5 py-1 rounded-lg border border-sky-500/25 font-mono">
+                                <span>💾 Скачать: {{ task.file_name or 'Загруженный файл' }}</span>
+                                <span>↗</span>
+                            </a>
+                            {% else %}
+                            <a href="{{ task.file_link }}" target="_blank" class="inline-flex items-center space-x-1 font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 px-2.5 py-1 rounded-lg border border-sky-500/25 font-mono truncate max-w-md">
+                                <span>🔗 {{ task.file_name or task.file_link }}</span>
+                                <span>↗</span>
+                            </a>
+                            {% endif %}
+                            <a href="{{ gdrive_folder_url or 'https://drive.google.com/drive/folders/1hfpxSnI4AtbHV9MPtnEkIVAoII1VP0g7' }}" target="_blank"
+                               class="inline-flex items-center space-x-1 font-bold text-violet-300 hover:text-violet-200 bg-violet-500/10 px-2.5 py-1 rounded-lg border border-violet-500/25 text-[11px]"
+                               title="Открыть общую папку Google Диска команды">
+                                <span>📁 Google Диск ↗</span>
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Actions / Rating based on status -->
+                    <div class="flex-shrink-0 text-right space-y-2 lg:min-w-[280px]">
+                        <a href="/task/{{ task.id }}" class="inline-flex items-center justify-center space-x-1.5 w-full bg-violet-950/30 hover:bg-violet-900/40 text-violet-200 font-bold text-xs py-2 px-3 rounded-xl border border-violet-500/25 transition-all shadow-sm mb-1">
+                            <span>💬</span>
+                            <span>Подробное описание и чат →</span>
+                        </a>
+
+                        {% if task.status == 'done' %}
+                        <div class="cyber-glass bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-3.5 text-center shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                            <div class="text-[10px] font-bold uppercase text-emerald-300 tracking-wider">Итоговая оценка</div>
+                            <div class="text-2xl font-black text-emerald-400">{{ task.score }} <span class="text-xs font-bold text-emerald-300/70">/ 10</span></div>
+                            {% if task.graded_by %}
+                            <div class="text-[11px] text-emerald-200 font-semibold mt-1.5 pt-1.5 border-t border-emerald-500/20 flex items-center justify-center space-x-1">
+                                <span>👤 Проверил:</span>
+                                <b>{{ task.graded_by.name }}</b>
+                                <span class="text-[10px] opacity-75">({{ task.graded_by.role }})</span>
+                            </div>
+                            {% else %}
+                            <div class="text-[11px] text-emerald-200 font-semibold mt-1.5 pt-1.5 border-t border-emerald-500/20 flex items-center justify-center space-x-1">
+                                <span>👤 Проверил:</span>
+                                <b>Степан</b>
+                                <span class="text-[10px] opacity-75">(Главный Администратор)</span>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        {% if current_user.access_level >= 2 %}
+                        <div class="flex items-center justify-end space-x-2 pt-1">
+                            <form action="/task/{{ task.id }}/status" method="POST" class="inline-block">
+                                <input type="hidden" name="target_status" value="in_progress">
+                                <input type="hidden" name="redirect_to" value="/profile/{{ profile_user.id }}">
+                                <button type="submit" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-700 transition-colors" title="Вернуть задачу обратно в работу">
+                                    ↩ В работу
+                                </button>
+                            </form>
+                            <button type="button" onclick="openProfileReworkModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}')" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold text-xs px-2.5 py-1 rounded-lg shadow-sm transition-colors" title="Отправить задачу на доработку с замечаниями">
+                                🔄 Доработка
+                            </button>
+                        </div>
+                        {% endif %}
+
+                        {% elif (task.status == 'in_progress' or task.status == 'rework') and current_user.id == profile_user.id %}
+                        <!-- Submit Form for Assigned User (Upload File or Link) -->
+                        <div class="cyber-glass bg-[#0B0F24]/70 border border-violet-500/30 rounded-2xl p-4 text-left space-y-3 w-full lg:w-80 shadow-xl">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-black uppercase text-violet-300 tracking-wider">
+                                    {{ 'Повторная сдача работы' if task.status == 'rework' else 'Сдача работы' }}
+                                </span>
+                                <a href="{{ gdrive_folder_url or 'https://drive.google.com/drive/folders/1hfpxSnI4AtbHV9MPtnEkIVAoII1VP0g7' }}" target="_blank"
+                                   class="text-[10px] font-bold text-sky-300 hover:text-sky-200 bg-sky-500/15 hover:bg-sky-500/25 px-2 py-0.5 rounded-md flex items-center space-x-1 transition-colors border border-sky-500/25"
+                                   title="Открыть общую папку Google Диска команды">
+                                    <span>📁 Google Диск ↗</span>
+                                </a>
+                            </div>
+
+                            <form action="/task/{{ task.id }}/submit" method="POST" enctype="multipart/form-data" class="space-y-2.5" onsubmit="return validateSubmitForm(this, '{{ task.id }}')">
+                                <!-- Способ 1: Скинуть файл с устройства -->
+                                <div>
+                                    <label for="file_input_{{ task.id }}"
+                                           class="cursor-pointer block border-2 border-dashed border-violet-500/40 hover:border-violet-400 bg-violet-950/20 hover:bg-violet-900/30 rounded-xl p-3 text-center transition-all group">
+                                        <div class="flex items-center justify-center space-x-2 text-violet-300 group-hover:text-white">
+                                            <span class="text-lg">📎</span>
+                                            <span id="file_label_{{ task.id }}" class="text-xs font-bold truncate max-w-[200px]">Скинуть файл (фото, видео, архив)</span>
+                                        </div>
+                                        <div id="file_sub_{{ task.id }}" class="text-[10px] text-slate-400 mt-0.5">
+                                            Нажмите для выбора файла с ПК или телефона
+                                        </div>
+                                    </label>
+                                    <input type="file" name="file_upload" id="file_input_{{ task.id }}" class="hidden"
+                                           onchange="handleTaskFileSelect(this, '{{ task.id }}')">
+                                </div>
+
+                                <div class="relative flex items-center justify-center">
+                                    <div class="border-t border-violet-500/20 w-full"></div>
+                                    <span class="bg-[#0B0F24] px-2 text-[10px] font-bold text-slate-500 uppercase shrink-0">или ссылка</span>
+                                    <div class="border-t border-violet-500/20 w-full"></div>
+                                </div>
+
+                                <!-- Способ 2: Ссылка -->
+                                <div>
+                                    <input type="url" name="file_link" id="link_input_{{ task.id }}"
+                                           placeholder="Ссылка на Google Drive / Figma / Яндекс"
+                                           class="w-full text-xs px-3 py-2 bg-[#060814]/80 border border-violet-500/30 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20">
+                                </div>
+
+                                <button type="submit"
+                                        class="w-full btn-neon font-black py-2.5 px-3 rounded-xl text-xs flex items-center justify-center space-x-1.5">
+                                    <span>📤</span>
+                                    <span>{{ 'Сдать доработку на проверку' if task.status == 'rework' else 'Сдать на проверку' }}</span>
+                                </button>
+                            </form>
+
+                            {% if current_user.access_level >= 2 %}
+                            <div class="pt-2 border-t border-violet-500/20 flex items-center justify-between">
+                                <span class="text-[10px] font-bold text-slate-400">Действие руководителя:</span>
+                                <button type="button" onclick="openProfileCompleteModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}')" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-bold text-xs px-2.5 py-1 rounded-lg shadow-sm transition-colors">
+                                    ✓ Завершить
+                                </button>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        {% elif task.status == 'in_progress' and current_user.access_level >= 2 %}
+                        <div class="cyber-glass bg-[#0B0F24]/60 border border-violet-500/20 rounded-xl p-3 text-center space-y-2">
+                            <div class="text-xs font-bold text-slate-300">Задача в работе у участника</div>
+                            <button type="button" onclick="openProfileCompleteModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}')" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-bold text-xs px-3 py-1.5 rounded-xl shadow-sm transition-colors">
+                                ✓ Завершить задачу
+                            </button>
+                        </div>
+
+                        {% elif task.status == 'rework' and current_user.access_level >= 2 %}
+                        <div class="cyber-glass bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 text-center space-y-2">
+                            <div class="text-xs font-bold text-rose-300">Задача на доработке</div>
+                            <div class="flex items-center justify-center space-x-2">
+                                <button type="button" onclick="openProfileCompleteModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}')" class="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 font-bold text-xs px-2.5 py-1 rounded-lg shadow-sm transition-colors">
+                                    ✓ Завершить
+                                </button>
+                                <form action="/task/{{ task.id }}/status" method="POST" class="inline-block">
+                                    <input type="hidden" name="target_status" value="in_progress">
+                                    <input type="hidden" name="redirect_to" value="/profile/{{ profile_user.id }}">
+                                    <button type="submit" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-700 transition-colors">
+                                        ↩ В работу
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        {% elif task.status == 'review' %}
+                        <div class="cyber-glass bg-amber-500/10 border border-amber-500/25 rounded-2xl p-3 text-center text-xs text-amber-300 space-y-2 shadow-[0_0_12px_rgba(245,158,11,0.15)]">
+                            <div>
+                                <div class="font-bold">Материал сдан</div>
+                                <div class="text-[11px] text-slate-400 mt-0.5">Ожидает проверки руководителем</div>
+                            </div>
+                            {% if current_user.access_level >= 2 %}
+                            <div class="flex items-center justify-center space-x-2 pt-1 border-t border-amber-500/20">
+                                {% if current_user.access_level >= 3 %}
+                                <a href="/management#task-{{ task.id }}" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 font-bold text-xs px-2.5 py-1 rounded-lg shadow-sm transition-colors">
+                                    Оценить
+                                </a>
+                                {% endif %}
+                                <button type="button" onclick="openProfileReworkModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}')" class="bg-violet-950/40 text-violet-300 hover:text-white hover:bg-violet-900/50 font-bold text-xs px-2.5 py-1 rounded-lg border border-violet-500/30 transition-colors">
+                                    🔄 Доработка
+                                </button>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-12 text-center text-slate-500">
+            <div class="text-4xl mb-2 filter drop-shadow-[0_0_10px_rgba(167,139,250,0.3)]">📂</div>
+            <div class="text-sm font-semibold text-slate-300">У пользователя пока нет взятых задач</div>
+            <div class="text-xs text-slate-500 mt-1">Откройте общий контент-план, чтобы взять задачу в работу.</div>
+            <a href="/content-plan" class="inline-block mt-4 px-4 py-2 btn-neon text-white font-bold text-xs rounded-xl shadow-lg">
+                Перейти в контент-план
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal: Edit User (Admin Level 4) -->
+{% if current_user.access_level == 4 %}
+<div id="editProfileModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass rounded-3xl max-w-md w-full p-6 shadow-2xl border border-violet-500/30 bg-[#0B0F24]">
+        <div class="flex items-center justify-between pb-4 border-b border-violet-500/20">
+            <div>
+                <h3 class="text-base font-black text-white">Редактирование профиля</h3>
+                <p class="text-xs text-violet-400">Доступно только администратору (4 уровень)</p>
+            </div>
+            <button onclick="document.getElementById('editProfileModal').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold transition-colors">✕</button>
+        </div>
+
+        <form action="/profile/{{ profile_user.id }}/edit" method="POST" class="mt-4 space-y-4">
+            <!-- ФИО -->
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1">Фамилия и Имя *</label>
+                <input type="text" name="name" value="{{ profile_user.name }}" required
+                       class="w-full text-sm px-3.5 py-2.5 bg-[#060814] border border-violet-500/30 rounded-xl text-white focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20">
+            </div>
+
+            <!-- Логин -->
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1">Логин</label>
+                <input type="text" value="{{ profile_user.username or 'user_' ~ profile_user.id }}" disabled
+                       class="w-full text-sm px-3.5 py-2 bg-[#060814]/60 border border-violet-500/20 rounded-xl text-slate-500 font-mono">
+            </div>
+
+            <!-- Новый пароль -->
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1">
+                    Новый пароль
+                </label>
+                <input type="password" name="password" placeholder="Введите новый пароль (или оставьте пустым)"
+                       class="w-full text-sm px-3.5 py-2.5 bg-[#060814] border border-violet-500/30 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20">
+                <span class="text-[11px] text-slate-400 block mt-0.5">Если пароль не нужно менять, оставьте это поле пустым</span>
+            </div>
+
+            <!-- Цех и Уровень -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-300 mb-1">Направление</label>
+                    <select name="role" class="w-full text-xs font-semibold px-3 py-2.5 bg-[#060814] border border-violet-500/30 rounded-xl text-white focus:outline-none focus:border-cyan-400">
+                        <option value="Фото" {% if profile_user.role == 'Фото' %}selected{% endif %}>Фото</option>
+                        <option value="Дизайн" {% if profile_user.role == 'Дизайн' %}selected{% endif %}>Дизайн</option>
+                        <option value="Видео" {% if profile_user.role == 'Видео' %}selected{% endif %}>Видео</option>
+                        <option value="Моушен" {% if profile_user.role == 'Моушен' %}selected{% endif %}>Моушен</option>
+                        <option value="СММ" {% if profile_user.role == 'СММ' %}selected{% endif %}>СММ</option>
+                        <option value="Руководство" {% if profile_user.role == 'Руководство' %}selected{% endif %}>Руководство</option>
+                        <option value="Админ" {% if profile_user.role == 'Админ' %}selected{% endif %}>Админ</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-300 mb-1">Уровень доступа</label>
+                    {% if profile_user.username == 'stepyn' %}
+                    <input type="text" value="Ур. 4 (Защищен)" disabled
+                           class="w-full text-xs font-bold px-3 py-2.5 bg-[#060814]/60 border border-violet-500/20 rounded-xl text-slate-500">
+                    <input type="hidden" name="access_level" value="4">
+                    {% else %}
+                    <select name="access_level" class="w-full text-xs font-semibold px-3 py-2.5 bg-[#060814] border border-violet-500/30 rounded-xl text-white focus:outline-none focus:border-cyan-400">
+                        <option value="1" {% if profile_user.access_level == 1 %}selected{% endif %}>Уровень 1 (Участник)</option>
+                        <option value="2" {% if profile_user.access_level == 2 %}selected{% endif %}>Уровень 2 (Глава цеха)</option>
+                        <option value="3" {% if profile_user.access_level == 3 %}selected{% endif %}>Уровень 3 (Руководство)</option>
+                        <option value="4" {% if profile_user.access_level == 4 %}selected{% endif %}>Уровень 4 (Админ)</option>
+                    </select>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="pt-3 flex justify-end space-x-2">
+                <button type="button" onclick="document.getElementById('editProfileModal').classList.add('hidden')"
+                        class="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors">
+                    Отмена
+                </button>
+                <button type="submit"
+                        class="px-5 py-2 text-xs font-bold btn-neon text-white rounded-xl shadow-md transition-colors">
+                    Сохранить изменения
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Модальное окно привязки Telegram -->
+<div id="editTgModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-4">
+    <div class="cyber-glass rounded-3xl max-w-md w-full p-6 shadow-2xl border border-violet-500/30 bg-[#0B0F24]">
+        <div class="flex items-center justify-between pb-4 border-b border-violet-500/20">
+            <div class="flex items-center space-x-2.5">
+                <span class="text-xl">✈️</span>
+                <h3 class="font-bold text-white text-base">Подключение Telegram</h3>
+            </div>
+            <button onclick="document.getElementById('editTgModal').classList.add('hidden')" class="text-slate-400 hover:text-white transition-colors">✕</button>
+        </div>
+
+        <div class="py-4 space-y-4 text-xs text-slate-300">
+            <div class="cyber-glass bg-sky-500/10 border border-sky-500/30 rounded-2xl p-3.5 text-sky-200">
+                <div class="font-bold mb-1 text-white">Способ 1: Автоматическая привязка (Рекомендуется)</div>
+                <p class="text-[11px] leading-relaxed mb-2 text-slate-300">Нажмите кнопку ниже, чтобы открыть бота <b>@ping_sstu_bot</b>. Бот автоматически зафиксирует ваш Chat ID:</p>
+                <a href="https://t.me/ping_sstu_bot?start=bind_{{ profile_user.id }}" target="_blank"
+                   class="inline-flex items-center space-x-1.5 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 font-bold px-3 py-1.5 rounded-lg text-xs shadow-[0_0_10px_rgba(56,189,248,0.2)] transition-all">
+                    <span>📲 Открыть бота @ping_sstu_bot →</span>
+                </a>
+            </div>
+
+            <div class="pt-2 border-t border-violet-500/20">
+                <div class="font-bold mb-1 text-white">Способ 2: Указать Telegram ID или @username вручную</div>
+                <form action="/profile/telegram-bind" method="POST" class="space-y-3 mt-2">
+                    <div>
+                        <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Telegram Chat ID или @username</label>
+                        <input type="text" name="telegram_id" value="{{ profile_user.telegram_id or '' }}" required
+                               placeholder="Например: 123456789 или @username"
+                               class="w-full text-xs font-mono px-3 py-2 bg-[#060814] border border-violet-500/30 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20">
+                    </div>
+                    <div class="flex justify-end space-x-2 pt-2">
+                        <button type="button" onclick="document.getElementById('editTgModal').classList.add('hidden')"
+                                class="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white rounded-lg">Отмена</button>
+                        <button type="submit"
+                                class="px-4 py-1.5 text-xs font-bold btn-neon text-white rounded-lg shadow-sm">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Change / Set Deadline (Only for Access Levels 3 and 4) -->
+{% if current_user.access_level >= 3 %}
+<div id="profileDeadlineModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-violet-500/30 bg-[#0B0F24] space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-violet-500/20">
+            <h3 class="text-base font-black text-white flex items-center space-x-2">
+                <span>⏰</span>
+                <span>Управление дедлайном</span>
+            </h3>
+            <button type="button" onclick="closeProfileDeadlineModal()" class="text-slate-400 hover:text-white font-bold transition-colors">✕</button>
+        </div>
+
+        <form id="profileDeadlineForm" method="POST" action="" class="space-y-4">
+            <input type="hidden" name="redirect_to" value="/profile/{{ profile_user.id }}">
+            <div>
+                <p id="profileDeadlineTaskTitle" class="text-xs font-bold text-violet-300 truncate mb-3 bg-violet-500/15 p-2 rounded-lg border border-violet-500/25"></p>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1">Срок сдачи (Дата и время) *</label>
+                <input type="datetime-local" name="deadline" id="profileDeadlineInput" required
+                       class="w-full text-sm px-3.5 py-2.5 bg-[#060814] border border-violet-500/30 rounded-xl text-white focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 font-sans">
+                <span class="text-[10px] text-slate-400 mt-1 block">Доступно только руководству (3 и 4 уровень).</span>
+            </div>
+
+            <div class="flex items-center justify-between pt-2 border-t border-violet-500/20">
+                <button type="button" onclick="clearProfileDeadlineInput()" class="text-xs font-bold text-rose-400 hover:text-rose-300 hover:underline">
+                    Снять дедлайн
+                </button>
+                <div class="flex space-x-2">
+                    <button type="button" onclick="closeProfileDeadlineModal()" class="px-3 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl">
+                        Отмена
+                    </button>
+                    <button type="submit" class="px-4 py-2 text-xs font-bold btn-neon text-white rounded-xl shadow-md">
+                        Сохранить
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Modal: Complete Task with Score in Profile (Levels 2-4) -->
+<div id="profileCompleteModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-violet-500/30 bg-[#0B0F24] space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-violet-500/20">
+            <h3 class="text-base font-black text-white flex items-center space-x-2">
+                <span>✅</span>
+                <span>Завершить задачу</span>
+            </h3>
+            <button type="button" onclick="closeProfileCompleteModal()" class="text-slate-400 hover:text-white font-bold transition-colors">✕</button>
+        </div>
+
+        <form id="profileCompleteForm" method="POST" action="" class="space-y-4">
+            <input type="hidden" name="target_status" value="done">
+            <input type="hidden" name="redirect_to" value="/profile/{{ profile_user.id }}">
+
+            <div>
+                <p id="profileCompleteTaskTitle" class="text-xs font-bold text-emerald-300 truncate mb-3 bg-emerald-500/10 p-2.5 rounded-lg border border-emerald-500/25"></p>
+                <div class="flex justify-between items-center text-xs mb-1">
+                    <span class="font-bold text-slate-300">Оценка за работу:</span>
+                    <span id="profileCompleteScoreVal" class="font-black text-emerald-400 text-sm">10 / 10</span>
+                </div>
+                <input type="range" name="score" min="1" max="10" value="10" step="1"
+                       oninput="document.getElementById('profileCompleteScoreVal').innerText = this.value + ' / 10'"
+                       class="w-full accent-emerald-500 cursor-pointer">
+                <div class="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                    <span>1 (переделать)</span>
+                    <span>5</span>
+                    <span>10 (отлично)</span>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button type="button" onclick="closeProfileCompleteModal()" class="px-3 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl">Отмена</button>
+                <button type="submit" class="px-4 py-2 text-xs font-bold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl shadow-md transition-colors">✓ Принять и закрыть</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Send Task to Rework in Profile (Levels 2-4) -->
+<div id="profileReworkModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass rounded-3xl max-w-md w-full p-6 shadow-2xl border border-violet-500/30 bg-[#0B0F24] space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-violet-500/20">
+            <h3 class="text-base font-black text-white flex items-center space-x-2">
+                <span>🔄</span>
+                <span>Отправка на доработку</span>
+            </h3>
+            <button type="button" onclick="closeProfileReworkModal()" class="text-slate-400 hover:text-white font-bold transition-colors">✕</button>
+        </div>
+
+        <form id="profileReworkForm" method="POST" action="" class="space-y-4">
+            <input type="hidden" name="target_status" value="rework">
+            <input type="hidden" name="redirect_to" value="/profile/{{ profile_user.id }}">
+
+            <div>
+                <p id="profileReworkTaskTitle" class="text-xs font-bold text-amber-300 truncate mb-2.5 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/25"></p>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1">Замечания / Что необходимо исправить:</label>
+                <textarea name="rework_notes" id="profileReworkNotesInput" rows="3" required placeholder="Опишите замечания (исполнитель получит уведомление в Telegram и увидит в профиле)..." class="w-full text-xs px-3 py-2 bg-[#060814] border border-violet-500/30 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20"></textarea>
+            </div>
+
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button type="button" onclick="closeProfileReworkModal()" class="px-3 py-2 text-xs font-bold text-slate-400 hover:text-white rounded-xl">Отмена</button>
+                <button type="submit" class="px-4 py-2 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl shadow-md transition-colors">Отправить на доработку</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openProfileCompleteModal(taskId, taskTitle) {
+    const modal = document.getElementById('profileCompleteModal');
+    if (!modal) return;
+    document.getElementById('profileCompleteForm').action = '/task/' + taskId + '/status';
+    document.getElementById('profileCompleteTaskTitle').innerText = 'Задача #' + taskId + ': ' + taskTitle;
+    document.getElementById('profileCompleteScoreVal').innerText = '10 / 10';
+    modal.classList.remove('hidden');
+}
+
+function closeProfileCompleteModal() {
+    const modal = document.getElementById('profileCompleteModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function openProfileReworkModal(taskId, taskTitle) {
+    const modal = document.getElementById('profileReworkModal');
+    if (!modal) return;
+    document.getElementById('profileReworkForm').action = '/task/' + taskId + '/status';
+    document.getElementById('profileReworkTaskTitle').innerText = 'Задача #' + taskId + ': ' + taskTitle;
+    document.getElementById('profileReworkNotesInput').value = '';
+    modal.classList.remove('hidden');
+}
+
+function closeProfileReworkModal() {
+    const modal = document.getElementById('profileReworkModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function openProfileDeadlineModal(taskId, taskTitle, currentDeadline) {
+    const modal = document.getElementById('profileDeadlineModal');
+    if (!modal) return;
+    document.getElementById('profileDeadlineForm').action = '/task/' + taskId + '/deadline';
+    document.getElementById('profileDeadlineTaskTitle').innerText = 'Задача #' + taskId + ': ' + taskTitle;
+    document.getElementById('profileDeadlineInput').value = currentDeadline || '';
+    modal.classList.remove('hidden');
+}
+
+function closeProfileDeadlineModal() {
+    const modal = document.getElementById('profileDeadlineModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function clearProfileDeadlineInput() {
+    const input = document.getElementById('profileDeadlineInput');
+    if (input) {
+        input.removeAttribute('required');
+        input.value = '';
+        document.getElementById('profileDeadlineForm').submit();
+    }
+}
+
+function handleTaskFileSelect(input, taskId) {
+    const label = document.getElementById('file_label_' + taskId);
+    const sub = document.getElementById('file_sub_' + taskId);
+    if (input.files && input.files[0]) {
+        const file = input.files[0];
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        label.textContent = '✅ ' + file.name;
+        label.className = 'text-xs font-bold truncate max-w-[200px] text-emerald-300';
+        sub.textContent = 'Размер: ' + sizeMb + ' МБ • Готов к отправке';
+        sub.className = 'text-[10px] text-emerald-400 font-semibold mt-0.5';
+    }
+}
+
+function validateSubmitForm(form, taskId) {
+    const fileInput = document.getElementById('file_input_' + taskId);
+    const linkInput = document.getElementById('link_input_' + taskId);
+    const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+    const hasLink = linkInput && linkInput.value && linkInput.value.trim().length > 0;
+    if (!hasFile && !hasLink) {
+        alert('Пожалуйста, выберите файл с устройства или укажите ссылку на работу.');
+        return false;
+    }
+    return true;
+}
+</script>
+{% endblock %}

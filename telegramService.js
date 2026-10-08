@@ -9,7 +9,9 @@ function getConfig() {
   const defaults = {
     bot_token: '8837250732:AAGS9Z_PoAuJQdQbDyFJ5us1ny1CmHSs0mc',
     bot_username: 'ping_sstu_bot',
-    leadership_group_chat_id: null
+    leadership_group_chat_id: null,
+    api_base_url: 'https://api.telegram.org',
+    proxy_url: ''
   };
   if (fs.existsSync(CONFIG_PATH)) {
     try {
@@ -44,21 +46,95 @@ function getLeadershipChatId() {
   return getConfig().leadership_group_chat_id;
 }
 
-async function callTelegramApi(method, body = {}) {
-  const token = getBotToken();
-  if (!token) return null;
-  const url = `https://api.telegram.org/bot${token}/${method}`;
+let cachedAgent = null;
+let cachedProxy = null;
+
+function getProxyDispatcher() {
+  const cfg = getConfig();
+  const proxy = (cfg.proxy_url || process.env.TELEGRAM_PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '').trim();
+  if (!proxy) return null;
+  if (proxy === cachedProxy && cachedAgent) return cachedAgent;
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    return await res.json();
-  } catch (err) {
-    console.error(`Telegram API error on ${method}:`, err.message);
+    const { ProxyAgent } = require('undici');
+    cachedAgent = new ProxyAgent(proxy);
+    cachedProxy = proxy;
+    return cachedAgent;
+  } catch (e) {
+    console.error('[TelegramBot] Failed to initialize ProxyAgent:', e.message);
     return null;
   }
+}
+
+async function callTelegramApi(method, body = {}, timeoutMs = 25000) {
+  const token = getBotToken();
+  if (!token) return null;
+  const cfg = getConfig();
+  const baseUrl = (cfg.api_base_url || 'https://api.telegram.org').trim().replace(/\/+$/, '');
+  const url = `${baseUrl}/bot${token}/${method}`;
+
+  const options = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs)
+  };
+
+  const dispatcher = getProxyDispatcher();
+  if (dispatcher) {
+    options.dispatcher = dispatcher;
+  }
+
+  try {
+    const res = await fetch(url, options);
+    return await res.json();
+  } catch (err) {
+    if (method !== 'getUpdates') {
+      console.error(`Telegram API error on ${method}:`, err.message);
+    }
+    return null;
+  }
+}
+
+function getMainReplyKeyboard(user = null) {
+  const isManager = user && user.access_level >= 2;
+  const keyboard = [];
+
+  if (user) {
+    keyboard.push([
+      { text: '📋 Мои задачи' },
+      { text: '🔥 Горящие дедлайны' }
+    ]);
+
+    keyboard.push([
+      { text: '🟢 Свободные задачи' }
+    ]);
+
+    if (isManager) {
+      keyboard.push([
+        { text: '📋 Задачи на проверке' },
+        { text: '📊 Статистика медиацентра' }
+      ]);
+    }
+
+    keyboard.push([
+      { text: '👤 Мой профиль' },
+      { text: 'ℹ️ Помощь' }
+    ]);
+  } else {
+    keyboard.push([
+      { text: '🟢 Свободные задачи' }
+    ]);
+    keyboard.push([
+      { text: '👤 Мой профиль' },
+      { text: 'ℹ️ Помощь' }
+    ]);
+  }
+
+  return {
+    keyboard,
+    resize_keyboard: true,
+    is_persistent: true
+  };
 }
 
 async function sendTelegramMessage(chatId, text, replyMarkup = null) {
@@ -68,11 +144,57 @@ async function sendTelegramMessage(chatId, text, replyMarkup = null) {
     text: text,
     parse_mode: 'HTML'
   };
+
   if (replyMarkup) {
     body.reply_markup = replyMarkup;
+  } else if (!String(chatId).startsWith('-')) {
+    try {
+      const user = await db.get('SELECT * FROM users WHERE telegram_id = ?', [String(chatId)]);
+      body.reply_markup = getMainReplyKeyboard(user);
+    } catch (e) {
+      body.reply_markup = getMainReplyKeyboard(null);
+    }
   }
+
   const res = await callTelegramApi('sendMessage', body);
   return Boolean(res && res.ok);
+}
+
+async function testTelegramConnection() {
+  const token = getBotToken();
+  if (!token) {
+    return { ok: false, error: 'Токен бота не настроен в bot_config.json' };
+  }
+  const cfg = getConfig();
+  const baseUrl = (cfg.api_base_url || 'https://api.telegram.org').trim().replace(/\/+$/, '');
+  const url = `${baseUrl}/bot${token}/getMe`;
+
+  const options = {
+    method: 'GET',
+    signal: AbortSignal.timeout(8000)
+  };
+  const dispatcher = getProxyDispatcher();
+  if (dispatcher) {
+    options.dispatcher = dispatcher;
+  }
+
+  try {
+    const res = await fetch(url, options);
+    const data = await res.json();
+    if (data && data.ok) {
+      return { ok: true, bot: data.result, baseUrl, proxy: cfg.proxy_url || null };
+    } else {
+      return { ok: false, error: data?.description || 'Неизвестная ошибка Telegram API', baseUrl, proxy: cfg.proxy_url || null };
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Ошибка соединения: ${err.message}. (api.telegram.org недоступен напрямую с вашего провайдера).`,
+      baseUrl,
+      proxy: cfg.proxy_url || null,
+      isNetworkError: true
+    };
+  }
 }
 
 async function editTelegramMessage(chatId, messageId, text, replyMarkup = null) {
@@ -450,6 +572,7 @@ class TelegramBotWorker {
   }
 
   async pollLoop() {
+    let consecutiveErrors = 0;
     while (this.running) {
       try {
         const token = getBotToken();
@@ -461,19 +584,33 @@ class TelegramBotWorker {
         const res = await callTelegramApi('getUpdates', {
           offset: this.offset,
           timeout: 20
-        });
+        }, 30000);
 
         if (res && res.ok && Array.isArray(res.result)) {
+          consecutiveErrors = 0;
           for (const update of res.result) {
             this.offset = update.update_id + 1;
             await this.handleUpdate(update);
           }
         } else {
-          await new Promise(r => setTimeout(r, 2000));
+          if (!res) {
+            consecutiveErrors++;
+            if (consecutiveErrors === 1 || consecutiveErrors % 15 === 0) {
+              console.warn(`[TelegramBot] getUpdates failed (${consecutiveErrors} раз подряд). Провайдер блокирует api.telegram.org:443. Требуется VPN, прокси или зеркало.`);
+            }
+            const delay = Math.min(15000, 3000 + consecutiveErrors * 1000);
+            await new Promise(r => setTimeout(r, delay));
+          } else {
+            consecutiveErrors = 0;
+            await new Promise(r => setTimeout(r, 1000));
+          }
         }
       } catch (err) {
-        console.error('[TelegramBot] Polling loop error:', err.message);
-        await new Promise(r => setTimeout(r, 3000));
+        consecutiveErrors++;
+        if (consecutiveErrors === 1 || consecutiveErrors % 15 === 0) {
+          console.warn('[TelegramBot] Polling loop error:', err.message);
+        }
+        await new Promise(r => setTimeout(r, 5000));
       }
     }
   }
@@ -577,7 +714,7 @@ class TelegramBotWorker {
   async handleMessage(message) {
     const chat = message.chat || {};
     const chatId = String(chat.id);
-    const text = (message.text || '').trim();
+    const rawText = (message.text || '').trim();
     const fromUser = message.from || {};
     const tgUserId = String(fromUser.id);
     const tgUsername = fromUser.username;
@@ -587,33 +724,53 @@ class TelegramBotWorker {
     const photo = message.photo;
     const video = message.video;
 
-    if (!text && !document && !photo && !video) return;
+    if (!rawText && !document && !photo && !video) return;
 
     if (document || photo || video) {
       await this.handleFileSubmission(message, chatId, tgUserId, tgUsername, userName);
       return;
     }
 
+    // Find linked user
+    let linkedUser = await db.get('SELECT * FROM users WHERE telegram_id = ?', [chatId]);
+    if (!linkedUser && tgUserId) {
+      linkedUser = await db.get('SELECT * FROM users WHERE telegram_id = ?', [tgUserId]);
+    }
+    if (!linkedUser && tgUsername) {
+      const cleanU = tgUsername.replace('@', '').toLowerCase();
+      linkedUser = await db.get(
+        'SELECT * FROM users WHERE telegram_id LIKE ? OR LOWER(username) = ?',
+        [`%${cleanU}%`, cleanU]
+      );
+      if (linkedUser) {
+        await db.run('UPDATE users SET telegram_id = ? WHERE id = ?', [chatId, linkedUser.id]);
+      }
+    }
+
+    // Normalize text (lower case, remove emojis)
+    const cleanText = rawText
+      .toLowerCase()
+      .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .trim();
+
     // 1. /start bind_ID
-    if (text.startsWith('/start bind_')) {
-      const uidStr = text.split('bind_')[1].trim();
+    if (rawText.startsWith('/start bind_')) {
+      const uidStr = rawText.split('bind_')[1].trim();
       const uid = parseInt(uidStr, 10);
       if (!isNaN(uid)) {
         const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [uid]);
         if (targetUser) {
           await db.run('UPDATE users SET telegram_id = ? WHERE id = ?', [chatId, targetUser.id]);
+          const kbd = getMainReplyKeyboard(targetUser);
           const reply = (
             '🎉 <b>АККАУНТ УСПЕШНО ПРИВЯЗАН!</b>\n\n' +
             `👤 <b>Пользователь:</b> ${targetUser.name}\n` +
             `🔑 <b>Логин:</b> <code>@${targetUser.username}</code>\n` +
             `🏷️ <b>Цех:</b> ${targetUser.role} (Уровень ${targetUser.access_level})\n\n` +
-            '✅ Теперь вы будете мгновенно получать уведомления от платформы и сможете оценивать задачи прямо из Telegram!\n\n' +
-            'Команды:\n' +
-            '• <code>/review</code> — задачи на проверке с кнопками оценки\n' +
-            '• <code>/stats</code> — сводка медиакоманды\n' +
-            '• <code>/unbind</code> — отвязать Telegram'
+            '✅ <b>Внизу экрана появились удобные плашки действий!</b>\n' +
+            'Теперь вы можете просматривать задачи, дедлайны и сдавать материалы прямо здесь.'
           );
-          await sendTelegramMessage(chatId, reply);
+          await sendTelegramMessage(chatId, reply, kbd);
           return;
         }
       }
@@ -622,59 +779,49 @@ class TelegramBotWorker {
     }
 
     // 2. /start
-    if (text === '/start') {
-      let linkedUser = await db.get('SELECT * FROM users WHERE telegram_id = ?', [chatId]);
-      if (!linkedUser && tgUsername) {
-        const cleanU = tgUsername.replace('@', '').toLowerCase();
-        linkedUser = await db.get(
-          'SELECT * FROM users WHERE telegram_id LIKE ? OR LOWER(username) = ?',
-          [`%${cleanU}%`, cleanU]
-        );
-        if (linkedUser) {
-          await db.run('UPDATE users SET telegram_id = ? WHERE id = ?', [chatId, linkedUser.id]);
-        }
-      }
-
+    if (rawText === '/start') {
+      const kbd = getMainReplyKeyboard(linkedUser);
       if (linkedUser) {
+        const isLead = linkedUser.access_level >= 2;
         const reply = (
           `👋 Здравствуйте, <b>${linkedUser.name}</b>!\n\n` +
-          `Ваш Telegram привязан к аккаунту <code>${linkedUser.username}</code> (${linkedUser.role}, Ур. ${linkedUser.access_level}).\n\n` +
-          '📌 <b>Доступные команды:</b>\n' +
-          '• <code>/review</code> — задачи на проверке с кнопками быстрой оценки\n' +
-          '• <code>/rate &lt;id&gt; &lt;балл&gt;</code> — оценить задачу текстом\n' +
-          '• <code>/rework &lt;id&gt; [замечания]</code> — вернуть задачу на доработку\n' +
-          '• <code>/stats</code> — статистика медиацентра\n' +
-          '• <code>/myid</code> — ваш цифровой Telegram Chat ID\n' +
-          '• <code>/unbind</code> — отключить оповещения'
+          `Ваш Telegram привязан к аккаунту: <code>@${linkedUser.username}</code> (${linkedUser.role}, Ур. ${linkedUser.access_level}).\n\n` +
+          '🔘 <b>Внизу экрана доступны быстрые кнопки (плашки):</b>\n' +
+          '• <b>📋 Мои задачи</b> — список ваших текущих дел\n' +
+          '• <b>🔥 Горящие дедлайны</b> — задачи, требующие срочного внимания\n' +
+          (isLead ? '• <b>📋 Задачи на проверке</b> — очередь сдачи с оценками 1–10\n• <b>📊 Статистика медиацентра</b> — сводка платформы\n' : '') +
+          '• <b>👤 Мой профиль</b> — статус и статистика\n' +
+          '• <b>ℹ️ Помощь</b> — команды и руководство\n\n' +
+          '<i>Просто кликайте по плашкам внизу экрана!</i>'
         );
-        await sendTelegramMessage(chatId, reply);
+        await sendTelegramMessage(chatId, reply, kbd);
       } else {
         const reply = (
-          `👋 Привет, <b>${userName}</b>! Я официальный бот оповещений медиацентра СГТУ (<b>@ping_sstu_bot</b>).\n\n` +
-          'Чтобы связать этот Telegram с вашим профилем на платформе:\n' +
-          '1. Войдите на сайт медиацентра\n' +
-          '2. Откройте <b>Профиль</b> или <b>Панель руководства</b>\n' +
-          '3. Нажмите кнопку <b>«Подключить Telegram»</b>\n\n' +
-          'Или напишите здесь:\n' +
-          '<code>/bind &lt;логин&gt; &lt;пароль&gt;</code>'
+          `👋 Привет, <b>${userName}</b>! Я официальный бот медиацентра СГТУ (@ping_sstu_bot).\n\n` +
+          'Чтобы привязать этот Telegram к вашему профилю на платформе:\n' +
+          '1. Войдите на сайт медиацентра и в профиле нажмите <b>«Подключить Telegram»</b>\n' +
+          '2. Или отправьте команду прямо сюда:\n' +
+          '<code>/bind &lt;ваш_логин&gt; &lt;ваш_пароль&gt;</code>'
         );
-        await sendTelegramMessage(chatId, reply);
+        await sendTelegramMessage(chatId, reply, kbd);
       }
       return;
     }
 
     // 3. /bind <login> <pass>
-    if (text.startsWith('/bind')) {
-      const parts = text.split(/\s+/);
+    if (rawText.startsWith('/bind')) {
+      const parts = rawText.split(/\s+/);
       if (parts.length === 3) {
         const login = parts[1].trim().toLowerCase();
         const pwd = parts[2].trim();
         const usr = await db.get('SELECT * FROM users WHERE LOWER(username) = ?', [login]);
         if (usr && db.verifyPassword(pwd, usr.password_hash)) {
           await db.run('UPDATE users SET telegram_id = ? WHERE id = ?', [chatId, usr.id]);
+          const kbd = getMainReplyKeyboard(usr);
           await sendTelegramMessage(
             chatId,
-            `✅ <b>Успешно!</b> Профиль <b>${usr.name}</b> (@${usr.username}, ${usr.role}) подключен к боту.\nТеперь вы можете оценивать задачи прямо через Telegram.`
+            `✅ <b>Успешно!</b> Профиль <b>${usr.name}</b> (@${usr.username}, ${usr.role}) подключен к боту.\nВнизу активированы кнопки быстрого доступа.`,
+            kbd
           );
         } else {
           await sendTelegramMessage(chatId, '❌ Неверный логин или пароль. Попробуйте еще раз.');
@@ -685,64 +832,280 @@ class TelegramBotWorker {
       return;
     }
 
-    // 4. /rate <task_id> <score>
-    if (text.startsWith('/rate') || text.startsWith('/grade') || text.startsWith('/оценить')) {
-      const parts = text.split(/\s+/);
-      if (parts.length === 3 && !isNaN(parts[1]) && !isNaN(parts[2])) {
-        const tid = parseInt(parts[1], 10);
-        const sc = parseInt(parts[2], 10);
-        const res = await applyTaskRatingByTgUser(tid, sc, tgUserId, tgUsername);
-        await sendTelegramMessage(chatId, res.message);
-      } else {
-        await sendTelegramMessage(chatId, 'ℹ️ Формат команды: <code>/rate &lt;ID_задачи&gt; &lt;оценка_от_1_до_10&gt;</code> (напр. <code>/rate 5 10</code>)');
-      }
-      return;
-    }
+    // 4. Action: 📋 Мои задачи (/tasks, мои задачи)
+    const isMyTasks = cleanText.includes('мои задачи') ||
+                      cleanText === 'задачи' ||
+                      cleanText === '/tasks' ||
+                      cleanText === 'tasks' ||
+                      cleanText === 'мои дела' ||
+                      cleanText === 'список задач';
 
-    // 5. /rework <task_id> [notes]
-    if (text.startsWith('/rework') || text.startsWith('/доработка')) {
-      const parts = text.split(/\s+/);
-      if (parts.length >= 2 && !isNaN(parts[1])) {
-        const tid = parseInt(parts[1], 10);
-        const notes = parts.slice(2).join(' ').trim() || 'Возвращено на доработку руководителем';
-        const res = await applyTaskReworkByTgUser(tid, tgUserId, tgUsername, notes);
-        await sendTelegramMessage(chatId, res.message);
-      } else {
-        await sendTelegramMessage(chatId, 'ℹ️ Формат команды: <code>/rework &lt;ID_задачи&gt; [замечания]</code>');
+    if (isMyTasks) {
+      if (!linkedUser) {
+        await sendTelegramMessage(
+          chatId,
+          '⚠️ <b>Telegram не привязан к профилю!</b>\n\n' +
+          'Чтобы смотреть свои задачи, привяжите аккаунт:\n' +
+          '<code>/bind &lt;логин&gt; &lt;пароль&gt;</code>'
+        );
+        return;
       }
-      return;
-    }
 
-    // 6. /review or /tasks
-    if (text === '/review' || text === '/проверка' || text === '/tasks') {
-      let userObj = await db.get('SELECT * FROM users WHERE telegram_id = ?', [tgUserId]);
-      if (!userObj && chatId) {
-        userObj = await db.get('SELECT * FROM users WHERE telegram_id = ?', [chatId]);
+      const tasks = await db.all(
+        `SELECT * FROM tasks 
+         WHERE assigned_to_id = ? AND status != 'done' 
+         ORDER BY 
+           CASE WHEN deadline IS NOT NULL AND TRIM(deadline) != '' THEN 0 ELSE 1 END ASC, 
+           deadline ASC, 
+           id DESC`,
+        [linkedUser.id]
+      );
+
+      if (!tasks || tasks.length === 0) {
+        await sendTelegramMessage(
+          chatId,
+          `🎉 <b>${linkedUser.name}</b>, у вас нет активных задач!\nВсе назначенные задачи закрыты или вы еще не взяли новую работу в контент-плане.`
+        );
+        return;
       }
-      if (!userObj && tgUsername) {
-        const cleanU = tgUsername.replace('@', '').toLowerCase();
-        userObj = await db.get('SELECT * FROM users WHERE LOWER(username) = ?', [cleanU]);
-        if (userObj) {
-          await db.run('UPDATE users SET telegram_id = ? WHERE id = ?', [tgUserId, userObj.id]);
+
+      const now = new Date();
+      const lines = [
+        `📋 <b>ВАШИ АКТИВНЫЕ ЗАДАЧИ (${tasks.length}):</b>`,
+        '━━━━━━━━━━━━━━━━━━'
+      ];
+
+      tasks.forEach((t, i) => {
+        let statusIcon = '⏳';
+        let statusName = 'В работе';
+        if (t.status === 'review') {
+          statusIcon = '🔍';
+          statusName = 'На проверке';
+        } else if (t.status === 'rework') {
+          statusIcon = '🔄';
+          statusName = 'На доработке';
+        } else if (t.status === 'open') {
+          statusIcon = '🟢';
+          statusName = 'Свободна';
         }
+
+        let deadlineInfo = '⏰ <b>Срок:</b> не установлен';
+        if (t.deadline) {
+          const dDate = new Date(t.deadline);
+          const diffHours = (dDate - now) / (1000 * 60 * 60);
+          const dateStr = t.deadline.replace('T', ' ');
+          if (diffHours < 0) {
+            deadlineInfo = `🔥 <b>ПРОСРОЧЕН:</b> <code>${dateStr}</code>`;
+          } else if (diffHours <= 48) {
+            deadlineInfo = `⚡ <b>ГОРИТ (осталось &lt; ${Math.round(diffHours)} ч):</b> <code>${dateStr}</code>`;
+          } else {
+            deadlineInfo = `⏰ <b>Дедлайн:</b> <code>${dateStr}</code>`;
+          }
+        }
+
+        lines.push(`<b>${i + 1}. #${t.id} — ${t.title}</b>`);
+        lines.push(`   ${statusIcon} <i>Статус:</i> ${statusName} | 🎯 <i>Цех:</i> <code>${t.direction}</code>`);
+        lines.push(`   ${deadlineInfo}`);
+        if (t.rework_notes && t.status === 'rework') {
+          lines.push(`   ⚠️ <i>Замечания:</i> ${t.rework_notes}`);
+        }
+        lines.push('');
+      });
+
+      lines.push('💡 <i>Чтобы сдать работу, отправьте файл или фото сюда с подписью номера задачи (например: <code>#' + tasks[0].id + '</code>).</i>');
+      await sendTelegramMessage(chatId, lines.join('\n'));
+      return;
+    }
+
+    // 5. Action: 🔥 Горящие дедлайны (/urgent, горящие дедлайны)
+    const isUrgent = cleanText.includes('горящие') ||
+                     cleanText.includes('дедлайн') ||
+                     cleanText === '/urgent' ||
+                     cleanText === '/deadlines' ||
+                     cleanText === 'deadlines' ||
+                     cleanText === 'срочные' ||
+                     cleanText.includes('горят');
+
+    if (isUrgent) {
+      if (!linkedUser) {
+        await sendTelegramMessage(
+          chatId,
+          '⚠️ <b>Telegram не привязан к профилю!</b>\n\n' +
+          'Чтобы смотреть свои дедлайны, привяжите аккаунт:\n' +
+          '<code>/bind &lt;логин&gt; &lt;пароль&gt;</code>'
+        );
+        return;
       }
 
-      if (!userObj) {
+      const tasks = await db.all(
+        `SELECT * FROM tasks 
+         WHERE assigned_to_id = ? AND status != 'done' AND deadline IS NOT NULL AND TRIM(deadline) != ''
+         ORDER BY deadline ASC`,
+        [linkedUser.id]
+      );
+
+      const now = new Date();
+      const urgentList = tasks.filter(t => {
+        const dDate = new Date(t.deadline);
+        const diffHours = (dDate - now) / (1000 * 60 * 60);
+        return diffHours <= 48; // Overdue or <= 48h
+      });
+
+      if (!urgentList || urgentList.length === 0) {
+        await sendTelegramMessage(
+          chatId,
+          `✅ <b>${linkedUser.name}</b>, у вас нет горящих дедлайнов (менее 48 часов)!\nПо всем вашим задачам запас времени достаточный.`
+        );
+        return;
+      }
+
+      const lines = [
+        `🔥 <b>ГОРЯЩИЕ ДЕДЛАЙНЫ (${urgentList.length}):</b>`,
+        '━━━━━━━━━━━━━━━━━━'
+      ];
+
+      urgentList.forEach((t, i) => {
+        const dDate = new Date(t.deadline);
+        const diffHours = (dDate - now) / (1000 * 60 * 60);
+        const dateStr = t.deadline.replace('T', ' ');
+
+        let tag = '⚡ <b>СРОЧНО:</b>';
+        if (diffHours < 0) tag = '🔥 <b>ПРОСРОЧЕН:</b>';
+        else if (diffHours <= 24) tag = '⚡ <b>ГОРИТ СЕГОДНЯ:</b>';
+
+        lines.push(`<b>${i + 1}. #${t.id} — ${t.title}</b>`);
+        lines.push(`   ${tag} <code>${dateStr}</code>`);
+        lines.push(`   <i>Статус:</i> ${t.status === 'rework' ? 'На доработке' : 'В работе'} | 🎯 <i>Цех:</i> <code>${t.direction}</code>`);
+        lines.push('');
+      });
+
+      lines.push('⚡ <i>Постарайтесь завершить и сдать работу до истечения срока!</i>');
+      await sendTelegramMessage(chatId, lines.join('\n'));
+      return;
+    }
+
+    // 5.1. Action: 🟢 Свободные задачи (/open, свободные)
+    const isOpenTasks = cleanText.includes('свободные') ||
+                        cleanText.includes('открытые') ||
+                        cleanText === '/open' ||
+                        cleanText === 'open' ||
+                        cleanText === 'доступные задачи';
+
+    if (isOpenTasks) {
+      const openTasks = await db.all(
+        `SELECT * FROM tasks 
+         WHERE status = 'open' 
+         ORDER BY 
+           CASE WHEN deadline IS NOT NULL AND TRIM(deadline) != '' THEN 0 ELSE 1 END ASC, 
+           deadline ASC, 
+           id DESC`
+      );
+
+      if (!openTasks || openTasks.length === 0) {
+        await sendTelegramMessage(
+          chatId,
+          '🎉 <b>В контент-плане сейчас нет свободных задач!</b>\nВсе задачи распределены по участникам или уже завершены.'
+        );
+        return;
+      }
+
+      const now = new Date();
+      const lines = [
+        `🟢 <b>СВОБОДНЫЕ ЗАДАЧИ В КОНТЕНТ-ПЛАНЕ (${openTasks.length}):</b>`,
+        '━━━━━━━━━━━━━━━━━━'
+      ];
+
+      openTasks.forEach((t, i) => {
+        let deadlineInfo = '⏰ <b>Срок:</b> не установлен';
+        if (t.deadline) {
+          const dDate = new Date(t.deadline);
+          const diffHours = (dDate - now) / (1000 * 60 * 60);
+          const dateStr = t.deadline.replace('T', ' ');
+          if (diffHours < 0) {
+            deadlineInfo = `🔥 <b>ПРОСРОЧЕН:</b> <code>${dateStr}</code>`;
+          } else if (diffHours <= 48) {
+            deadlineInfo = `⚡ <b>ГОРИТ (&lt; ${Math.round(diffHours)} ч):</b> <code>${dateStr}</code>`;
+          } else {
+            deadlineInfo = `⏰ <b>Дедлайн:</b> <code>${dateStr}</code>`;
+          }
+        }
+
+        const isMyDir = (linkedUser && linkedUser.role === t.direction) ? ' ⭐ (Ваш цех!)' : '';
+        lines.push(`<b>${i + 1}. #${t.id} — ${t.title}</b>${isMyDir}`);
+        lines.push(`   🎯 <i>Цех:</i> <code>${t.direction}</code> | ${deadlineInfo}`);
+        if (t.description) {
+          const descPreview = t.description.length > 70 ? t.description.substring(0, 67) + '...' : t.description;
+          lines.push(`   📝 <i>ТЗ:</i> ${descPreview}`);
+        }
+        lines.push('');
+      });
+
+      lines.push('🌐 <i>Взять задачу в работу можно на платформе:</i> <a href="http://localhost:8000/content-plan">Открыть Контент-план</a>');
+      await sendTelegramMessage(chatId, lines.join('\n'));
+      return;
+    }
+
+    // 6. Action: 👤 Мой профиль (/profile, /me, мой профиль)
+    const isProfile = cleanText.includes('профиль') ||
+                      cleanText === '/profile' ||
+                      cleanText === '/me' ||
+                      cleanText === 'мой аккаунт' ||
+                      cleanText === 'аккаунт';
+
+    if (isProfile) {
+      if (!linkedUser) {
+        await sendTelegramMessage(
+          chatId,
+          '👤 <b>ВАШ TELEGRAM НЕ ПРИВЯЗАН К ПЛАТФОРМЕ</b>\n\n' +
+          `🆔 Ваш Chat ID: <code>${chatId}</code>\n\n` +
+          'Чтобы привязать аккаунт:\n' +
+          '1. Откройте профиль на сайте и нажмите «Подключить Telegram»\n' +
+          '2. Или напишите команду прямо сюда:\n' +
+          '<code>/bind &lt;ваш_логин&gt; &lt;пароль&gt;</code>'
+        );
+        return;
+      }
+
+      const roleLabels = { 1: 'Участник', 2: 'Глава цеха', 3: 'Руководитель', 4: 'Главный Администратор' };
+      const levelTitle = roleLabels[linkedUser.access_level] || `Уровень ${linkedUser.access_level}`;
+      const avgScore = (linkedUser.average_score || 0).toFixed(1);
+
+      const profileCard = (
+        '👤 <b>ВАШ ПРОФИЛЬ В МЕДИАЦЕНТРЕ СГТУ:</b>\n\n' +
+        `👤 <b>ФИО:</b> ${linkedUser.name}\n` +
+        `🔑 <b>Логин:</b> <code>@${linkedUser.username}</code>\n` +
+        `🏷️ <b>Цех:</b> <b>${linkedUser.role}</b>\n` +
+        `👑 <b>Должность:</b> ${levelTitle} (Ур. ${linkedUser.access_level})\n` +
+        `⭐ <b>Средний балл:</b> <b>${avgScore} / 10.0</b>\n` +
+        `✅ <b>Сдано и закрыто задач:</b> <b>${linkedUser.completed_tasks || 0}</b>\n` +
+        `🆔 <b>Telegram Chat ID:</b> <code>${chatId}</code>\n\n` +
+        `🌐 <a href="http://localhost:8000/profile/${linkedUser.id}">Открыть профиль на сайте</a>`
+      );
+      await sendTelegramMessage(chatId, profileCard);
+      return;
+    }
+
+    // 7. Action: 📋 Задачи на проверке (/review, задачи на проверке)
+    const isReview = cleanText.includes('на проверке') ||
+                     cleanText.includes('проверка') ||
+                     cleanText === '/review' ||
+                     cleanText === 'очередь';
+
+    if (isReview) {
+      if (!linkedUser) {
         await sendTelegramMessage(
           chatId,
           '⚠️ <b>Ваш Telegram пока не привязан к профилю руководителя.</b>\n\n' +
           'Чтобы проверять и оценивать задачи:\n' +
-          '1. Нажмите «Привязать мой Telegram» в панели руководства на сайте\n' +
-          '2. Или отправьте команду прямо сюда:\n' +
           '<code>/bind &lt;ваш_логин&gt; &lt;ваш_пароль&gt;</code>'
         );
         return;
       }
 
-      if (userObj.access_level < 2) {
+      if (linkedUser.access_level < 2) {
         await sendTelegramMessage(
           chatId,
-          `🔒 Доступ к очереди проверки разрешен главам цехов (2+) и руководству (3–4).\nВаш текущий профиль: ${userObj.name} (Уровень ${userObj.access_level}, ${userObj.role}).`
+          `🔒 Доступ к очереди проверки разрешен главам цехов (2+) и руководству (3–4).\nВаш текущий профиль: ${linkedUser.name} (${linkedUser.role}, Ур. ${linkedUser.access_level}).`
         );
         return;
       }
@@ -785,25 +1148,12 @@ class TelegramBotWorker {
       return;
     }
 
-    // 7. /setchat
-    if (text.startsWith('/setchat') || text.startsWith('/register_chat')) {
-      saveConfig({ leadership_group_chat_id: chatId });
-      await sendTelegramMessage(
-        chatId,
-        '👑 <b>ЧАТ РУКОВОДСТВА УСПЕШНО ЗАРЕГИСТРИРОВАН!</b>\n\n' +
-        `ID чата: <code>${chatId}</code> сохранен в системе.\nСюда будут направляться все сданные задачи с кнопками для выставления оценок.`
-      );
-      return;
-    }
+    // 8. Action: 📊 Статистика медиацентра (/stats, статистика)
+    const isStats = cleanText.includes('статистика') ||
+                    cleanText === '/stats' ||
+                    cleanText === 'сводка';
 
-    // 8. /myid
-    if (text === '/myid') {
-      await sendTelegramMessage(chatId, `🆔 Ваш Telegram Chat ID: <code>${chatId}</code>`);
-      return;
-    }
-
-    // 9. /stats
-    if (text === '/stats') {
+    if (isStats) {
       const totalUsers = (await db.get('SELECT COUNT(*) as c FROM users WHERE is_approved = 1')).c;
       const doneCount = (await db.get('SELECT COUNT(*) as c FROM tasks WHERE status = "done"')).c;
       const reviewCount = (await db.get('SELECT COUNT(*) as c FROM tasks WHERE status = "review"')).c;
@@ -815,39 +1165,105 @@ class TelegramBotWorker {
         `✅ Закрыто задач: <b>${doneCount}</b>\n` +
         `⏳ В работе сейчас: <b>${inProgCount}</b>\n` +
         `🔍 Ожидают проверки: <b>${reviewCount}</b>\n\n` +
-        'Платформа: http://localhost:8000'
+        '🌐 Платформа: <a href="http://localhost:8000">http://localhost:8000</a>'
       );
       await sendTelegramMessage(chatId, msgStats);
       return;
     }
 
-    // 10. /unbind
-    if (text === '/unbind') {
-      const usr = await db.get('SELECT * FROM users WHERE telegram_id = ?', [chatId]);
-      if (usr) {
-        await db.run('UPDATE users SET telegram_id = NULL WHERE id = ?', [usr.id]);
-        await sendTelegramMessage(chatId, `✅ Аккаунт <b>${usr.name}</b> отвязан. Оповещения отключены.`);
-      } else {
-        await sendTelegramMessage(chatId, 'ℹ️ Ваш Telegram не был привязан ни к одному аккаунту.');
-      }
-      return;
-    }
+    // 9. Action: ℹ️ Помощь (/help, помощь, справка)
+    const isHelp = cleanText.includes('помощь') ||
+                   cleanText.includes('справка') ||
+                   cleanText === '/help' ||
+                   cleanText === 'help';
 
-    // 11. /help
-    if (text === '/help') {
+    if (isHelp) {
+      const isLead = linkedUser && linkedUser.access_level >= 2;
       const helpText = (
-        'ℹ️ <b>Справка по боту оповещений (@ping_sstu_bot):</b>\n\n' +
-        '• <code>/review</code> — задачи на проверке с кнопками оценки от 1 до 10\n' +
-        '• <code>/rate &lt;ID&gt; &lt;оценка&gt;</code> — поставить оценку текстом\n' +
-        '• <code>/start</code> — статус привязки аккаунта\n' +
-        '• <code>/bind &lt;логин&gt; &lt;пароль&gt;</code> — подключить профиль\n' +
-        '• <code>/stats</code> — сводка медиацентра\n' +
-        '• <code>/setchat</code> — зарегистрировать группу для оповещений руководства\n' +
+        'ℹ️ <b>СПРАВКА ПО БОТУ МЕДИАЦЕНТРА (@ping_sstu_bot):</b>\n\n' +
+        '🔘 <b>Быстрые кнопки внизу экрана (плашки):</b>\n' +
+        '• <b>📋 Мои задачи</b> — список ваших задач в работе и на доработке\n' +
+        '• <b>🔥 Горящие дедлайны</b> — задачи со сроком менее 48ч или просроченные\n' +
+        '• <b>🟢 Свободные задачи</b> — просмотр открытых задач в контент-плане\n' +
+        (isLead ? '• <b>📋 Задачи на проверке</b> — очередь работ с кнопками быстрой оценки (1–10)\n• <b>📊 Статистика медиацентра</b> — сводка команды\n' : '') +
+        '• <b>👤 Мой профиль</b> — ваши данные, цех, уровень и рейтинг\n' +
+        '• <b>ℹ️ Помощь</b> — эта справка\n\n' +
+        '📤 <b>Сдача работ:</b>\n' +
+        'Просто отправьте боту файл, фото или видео с указанием номера задачи в подписи (например: <code>#12</code>).\n\n' +
+        '⌨️ <b>Текстовые команды:</b>\n' +
+        '• <code>/bind &lt;логин&gt; &lt;пароль&gt;</code> — связать аккаунт\n' +
+        '• <code>/rate &lt;ID&gt; &lt;оценка&gt;</code> — оценить задачу текстом\n' +
+        '• <code>/rework &lt;ID&gt; [замечания]</code> — вернуть на доработку\n' +
         '• <code>/myid</code> — показать ваш цифровой Chat ID\n' +
         '• <code>/unbind</code> — отвязать Telegram'
       );
       await sendTelegramMessage(chatId, helpText);
       return;
+    }
+
+    // 10. /rate <task_id> <score>
+    if (rawText.startsWith('/rate') || rawText.startsWith('/grade') || rawText.startsWith('/оценить')) {
+      const parts = rawText.split(/\s+/);
+      if (parts.length === 3 && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        const tid = parseInt(parts[1], 10);
+        const sc = parseInt(parts[2], 10);
+        const res = await applyTaskRatingByTgUser(tid, sc, tgUserId, tgUsername);
+        await sendTelegramMessage(chatId, res.message);
+      } else {
+        await sendTelegramMessage(chatId, 'ℹ️ Формат команды: <code>/rate &lt;ID_задачи&gt; &lt;оценка_от_1_до_10&gt;</code> (напр. <code>/rate 5 10</code>)');
+      }
+      return;
+    }
+
+    // 11. /rework <task_id> [notes]
+    if (rawText.startsWith('/rework') || rawText.startsWith('/доработка')) {
+      const parts = rawText.split(/\s+/);
+      if (parts.length >= 2 && !isNaN(parts[1])) {
+        const tid = parseInt(parts[1], 10);
+        const notes = parts.slice(2).join(' ').trim() || 'Возвращено на доработку руководителем';
+        const res = await applyTaskReworkByTgUser(tid, tgUserId, tgUsername, notes);
+        await sendTelegramMessage(chatId, res.message);
+      } else {
+        await sendTelegramMessage(chatId, 'ℹ️ Формат команды: <code>/rework &lt;ID_задачи&gt; [замечания]</code>');
+      }
+      return;
+    }
+
+    // 12. /setchat
+    if (rawText.startsWith('/setchat') || rawText.startsWith('/register_chat')) {
+      saveConfig({ leadership_group_chat_id: chatId });
+      await sendTelegramMessage(
+        chatId,
+        '👑 <b>ЧАТ РУКОВОДСТВА УСПЕШНО ЗАРЕГИСТРИРОВАН!</b>\n\n' +
+        `ID чата: <code>${chatId}</code> сохранен в системе.\nСюда будут направляться все сданные задачи с кнопками для выставления оценок.`
+      );
+      return;
+    }
+
+    // 13. /myid
+    if (rawText === '/myid') {
+      await sendTelegramMessage(chatId, `🆔 Ваш Telegram Chat ID: <code>${chatId}</code>`);
+      return;
+    }
+
+    // 14. /unbind
+    if (rawText === '/unbind' || cleanText === 'отвязать' || cleanText === 'выйти') {
+      const usr = await db.get('SELECT * FROM users WHERE telegram_id = ?', [chatId]);
+      if (usr) {
+        await db.run('UPDATE users SET telegram_id = NULL WHERE id = ?', [usr.id]);
+        await sendTelegramMessage(chatId, `✅ Аккаунт <b>${usr.name}</b> отвязан. Оповещения отключены.`, getMainReplyKeyboard(null));
+      } else {
+        await sendTelegramMessage(chatId, 'ℹ️ Ваш Telegram не был привязан ни к одному аккаунту.', getMainReplyKeyboard(null));
+      }
+      return;
+    }
+
+    // Default response for private chats
+    if (!chatId.startsWith('-')) {
+      await sendTelegramMessage(
+        chatId,
+        '💡 Используйте кнопки действий внизу экрана для быстрого просмотра задач и дедлайнов, либо отправьте <code>/help</code> для справки.'
+      );
     }
   }
 
@@ -935,16 +1351,20 @@ class TelegramBotWorker {
       return;
     }
 
-    const fileInfoRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
-    const fileInfo = await fileInfoRes.json();
-    if (!fileInfo || !fileInfo.ok) {
+    const cfg = getConfig();
+    const baseUrl = (cfg.api_base_url || 'https://api.telegram.org').trim().replace(/\/+$/, '');
+    const fileInfoRes = await callTelegramApi('getFile', { file_id: fileId });
+    if (!fileInfoRes || !fileInfoRes.ok || !fileInfoRes.result) {
       await sendTelegramMessage(chatId, '❌ Не удалось получить ссылку на файл от Telegram.');
       return;
     }
 
-    const filePath = fileInfo.result.file_path;
-    const downloadUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
-    const fileResp = await fetch(downloadUrl);
+    const filePath = fileInfoRes.result.file_path;
+    const downloadUrl = `${baseUrl}/file/bot${token}/${filePath}`;
+    const fetchOpts = { signal: AbortSignal.timeout(60000) };
+    const dispatcher = getProxyDispatcher();
+    if (dispatcher) fetchOpts.dispatcher = dispatcher;
+    const fileResp = await fetch(downloadUrl, fetchOpts);
     const arrayBuffer = await fileResp.arrayBuffer();
     const fileBuffer = Buffer.from(arrayBuffer);
 
@@ -989,6 +1409,7 @@ module.exports = {
   getBotToken,
   getBotUsername,
   getLeadershipChatId,
+  getMainReplyKeyboard,
   sendTelegramMessage,
   editTelegramMessage,
   answerCallbackQuery,
@@ -1001,5 +1422,6 @@ module.exports = {
   notifyTaskRework,
   notifyTaskComment,
   sendTestNotification,
+  testTelegramConnection,
   botWorker
 };

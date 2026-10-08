@@ -128,7 +128,7 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 text-xs">
             <!-- 1. Личный статус проверяющего -->
             <div class="cyber-glass bg-[#060814]/70 border border-violet-500/20 rounded-2xl p-4 space-y-2">
                 <div class="text-[11px] uppercase font-black text-violet-300">Ваш личный Telegram</div>
@@ -153,14 +153,14 @@
 
             <!-- 2. Общий чат руководства -->
             <div class="cyber-glass bg-[#060814]/70 border border-violet-500/20 rounded-2xl p-4 space-y-2">
-                <div class="text-[11px] uppercase font-black text-violet-300">Общий чат / группа руководства</div>
+                <div class="text-[11px] uppercase font-black text-violet-300">Общий чат руководства</div>
                 <form action="/management/telegram-set-group" method="POST" class="space-y-2">
                     <div class="flex items-center space-x-2">
                         <input type="text" name="group_chat_id"
                                value="{{ leadership_chat_id or '' }}"
                                placeholder="ID группы (напр. -100...)"
                                class="bg-[#0B0F24] border border-violet-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 w-full font-mono">
-                        <button type="submit" class="bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-violet-200 px-3 py-1.5 rounded-xl font-black text-xs whitespace-nowrap transition-colors">
+                        <button type="submit" class="bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-violet-200 px-3 py-1.5 rounded-xl font-black text-xs whitespace-nowrap transition-colors" title="Сохранить ID чата">
                             💾
                         </button>
                     </div>
@@ -170,21 +170,179 @@
                 </div>
             </div>
 
-            <!-- 3. Тест оповещения -->
+            <!-- 3. Тест оповещения и связи -->
             <div class="cyber-glass bg-[#060814]/70 border border-violet-500/20 rounded-2xl p-4 space-y-2">
                 <div class="text-[11px] uppercase font-black text-violet-300">Проверка связи с ботом</div>
                 <form action="/management/telegram-test" method="POST" class="space-y-2">
                     <div class="flex items-center space-x-2">
                         <input type="text" name="chat_id"
-                               placeholder="Chat ID (по умолчанию ваш/группа)"
+                               placeholder="Chat ID (по умолч. ваш/группа)"
                                class="bg-[#0B0F24] border border-violet-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 w-full font-mono">
-                        <button type="submit" class="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-black px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap shadow-md transition-all">
+                        <button type="submit" class="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-black px-3 py-1.5 rounded-xl text-xs whitespace-nowrap shadow-md transition-all">
                             🔔 Тест
                         </button>
                     </div>
                 </form>
                 <div class="text-[10px] text-slate-400">
-                    Отправит тестовое сообщение в Telegram для проверки мгновенной доставки.
+                    Проверяет доступность Telegram API и отправляет тестовое сообщение.
+                </div>
+            </div>
+
+            <!-- 4. Прокси и Зеркало Telegram (обход блокировок ТСПУ) -->
+            <div class="cyber-glass bg-[#060814]/70 border border-violet-500/20 rounded-2xl p-4 space-y-2">
+                <div class="text-[11px] uppercase font-black text-violet-300 flex items-center justify-between">
+                    <span>Сеть / Прокси / Зеркало</span>
+                    {% if telegram_config and telegram_config.proxy_url %}
+                    <span class="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono font-bold">Proxy ON</span>
+                    {% else %}
+                    <span class="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono">Direct</span>
+                    {% endif %}
+                </div>
+                <form action="/management/telegram-config" method="POST" class="space-y-1.5">
+                    <div>
+                        <input type="text" name="proxy_url"
+                               value="{{ telegram_config.proxy_url if telegram_config else '' }}"
+                               placeholder="Прокси (напр. socks5://127.0.0.1:10808)"
+                               class="bg-[#0B0F24] border border-violet-500/30 rounded-xl px-2.5 py-1 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-400 w-full font-mono text-[11px]">
+                    </div>
+                    <div class="flex items-center space-x-1.5">
+                        <input type="text" name="api_base_url"
+                               value="{{ telegram_config.api_base_url if telegram_config and telegram_config.api_base_url else 'https://api.telegram.org' }}"
+                               placeholder="https://api.telegram.org"
+                               class="bg-[#0B0F24] border border-violet-500/30 rounded-xl px-2.5 py-1 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-400 w-full font-mono text-[11px]">
+                        <button type="submit" class="bg-violet-600/30 hover:bg-violet-600/50 border border-violet-500/40 text-violet-200 font-bold px-2.5 py-1 rounded-xl text-xs transition-colors whitespace-nowrap">
+                            💾 Сохранить
+                        </button>
+                    </div>
+                </form>
+                <div class="text-[10px] text-slate-400 leading-tight">
+                    💡 При блокировке api.telegram.org провайдером укажите локальный прокси или зеркало API.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VKontakte (VK) Community Bot Integration Hub -->
+    <div class="cyber-glass rounded-3xl p-6 md:p-7 shadow-2xl border border-blue-500/30 bg-[#0B0F24]/80 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-blue-500/15">
+            <div class="flex items-center space-x-3.5">
+                <div class="w-12 h-12 rounded-2xl bg-blue-600/20 border border-blue-400/40 flex items-center justify-center text-xl shadow-inner text-blue-400 font-black tracking-tight">
+                    VK
+                </div>
+                <div>
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <h2 class="text-base font-black text-white tracking-tight uppercase">Интеграция с ВКонтакте (VK Бот контент-плана)</h2>
+                        {% if vk_config.vk_group_token %}
+                        <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                            <span>Бот активен {% if vk_config.vk_group_id %}(ID: {{ vk_config.vk_group_id }}){% endif %}</span>
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                            <span>Ожидает настройки токена группы</span>
+                        </span>
+                        {% endif %}
+                    </div>
+                    <p class="text-xs text-slate-400 mt-0.5 font-medium">
+                        Участники могут по кнопкам узнавать свои висящие задачи, проверять дедлайны и получать мгновенные пуши в VK. <b class="text-blue-300">Строго режим мониторинга (Read-Only)</b>.
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2.5">
+                {% if vk_config.vk_group_id %}
+                <a href="https://vk.com/club{{ vk_config.vk_group_id }}" target="_blank"
+                   class="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-400/40 text-blue-200 font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center space-x-1.5 hover:scale-105"
+                   title="Перейти в группу ВКонтакте">
+                    <span>↗</span>
+                    <span>Открыть группу ВКонтакте</span>
+                </a>
+                {% endif %}
+
+                <button type="button" onclick="document.getElementById('vkInstructionModal').classList.remove('hidden')"
+                   class="bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-violet-200 font-black text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center space-x-1.5 hover:scale-105">
+                    <span>ℹ️</span>
+                    <span>Инструкция по настройке</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 text-xs">
+            <!-- 1. Настройки группы и ключа доступа -->
+            <div class="cyber-glass bg-[#060814]/70 border border-blue-500/20 rounded-2xl p-4 space-y-2">
+                <div class="text-[11px] uppercase font-black text-blue-300 flex items-center justify-between">
+                    <span>Настройка ключа VK API</span>
+                    <span class="text-[10px] text-slate-500 font-mono">v5.199</span>
+                </div>
+                <form action="/management/vk-config" method="POST" class="space-y-2.5">
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5 font-bold">Ключ доступа сообщества (Токен):</label>
+                        <input type="password" name="vk_group_token"
+                               value="{{ vk_config.vk_group_token or '' }}"
+                               placeholder="vk1.a.xxxxxxx..."
+                               class="bg-[#0B0F24] border border-blue-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 w-full font-mono">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5 font-bold">ID сообщества (без минуса):</label>
+                        <input type="text" name="vk_group_id"
+                               value="{{ vk_config.vk_group_id or '' }}"
+                               placeholder="Оставьте пустым для автоопределения"
+                               class="bg-[#0B0F24] border border-blue-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 w-full font-mono">
+                    </div>
+                    <div class="flex items-center justify-between pt-1">
+                        <label class="flex items-center space-x-2 cursor-pointer text-slate-300 text-[11px]">
+                            <input type="checkbox" name="is_enabled" value="true" {% if vk_config.is_enabled %}checked{% endif %} class="rounded border-blue-500/40 text-blue-500 focus:ring-0">
+                            <span>Бот включен</span>
+                        </label>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs px-4 py-1.5 rounded-xl transition-all shadow-md">
+                            💾 Сохранить
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 2. Возможности и команды бота -->
+            <div class="cyber-glass bg-[#060814]/70 border border-blue-500/20 rounded-2xl p-4 space-y-2">
+                <div class="text-[11px] uppercase font-black text-blue-300">Кнопки и режим работы</div>
+                <div class="space-y-1.5 text-[11px] text-slate-300">
+                    <div class="flex items-center space-x-2">
+                        <span class="bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-black border border-blue-500/30">📋 Мои задачи</span>
+                        <span class="text-slate-400">Список взятых задач и их статусы</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded font-black border border-rose-500/30">🔥 Дедлайны</span>
+                        <span class="text-slate-400">Сортировка по горящим срокам сдачи</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded font-black border border-violet-500/30">👤 Профиль</span>
+                        <span class="text-slate-400">Личный рейтинг, цех и статистика</span>
+                    </div>
+                </div>
+                <div class="text-[10px] text-slate-400 leading-tight pt-1 border-t border-blue-500/10">
+                    🔒 <b class="text-slate-300">Безопасность:</b> Через бота нельзя менять статусы или принимать задачи, только смотреть информацию.
+                </div>
+            </div>
+
+            <!-- 3. Тест оповещения в VK -->
+            <div class="cyber-glass bg-[#060814]/70 border border-blue-500/20 rounded-2xl p-4 space-y-2">
+                <div class="text-[11px] uppercase font-black text-blue-300">Проверка отправки в VK</div>
+                <form action="/management/vk-test" method="POST" class="space-y-2">
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5 font-bold">VK ID пользователя:</label>
+                        <div class="flex items-center space-x-2">
+                            <input type="text" name="vk_id"
+                                   value="{{ current_user.vk_id or '' }}"
+                                   placeholder="ID или ссылка (напр. 1234567)"
+                                   class="bg-[#0B0F24] border border-blue-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20 w-full font-mono">
+                            <button type="submit" class="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-black px-3.5 py-1.5 rounded-xl text-xs whitespace-nowrap shadow-md transition-all">
+                                🔔 Тест
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                <div class="text-[10px] text-slate-400">
+                    Отправит тестовое сообщение участнику для проверки работы токена и доставки в диалоге ВКонтакте.
                 </div>
             </div>
         </div>
@@ -625,6 +783,9 @@
 
                     <td class="py-3 px-6">
                         <span class="font-black text-slate-300">Ур. {{ member.access_level }}</span>
+                        {% if member.access_level == 1 and member.can_create_tasks %}
+                        <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold" title="Включен персональный доступ к созданию задач в контент-плане">КП ✅</span>
+                        {% endif %}
                     </td>
 
                     <td class="py-3 px-6 text-center font-mono text-slate-400 font-semibold">
@@ -1037,6 +1198,50 @@
                 <button type="submit" class="px-4 py-2 text-xs font-black bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 rounded-xl shadow-md transition-all">Отправить на доработку</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Modal: Инструкция по настройке VK бота -->
+<div id="vkInstructionModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-blue-500/30 bg-[#0B0F24] space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-blue-500/20">
+            <div class="flex items-center space-x-2.5">
+                <span class="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-300 flex items-center justify-center font-black text-sm">VK</span>
+                <h3 class="font-black text-white text-base">Быстрая настройка бота ВКонтакте</h3>
+            </div>
+            <button onclick="document.getElementById('vkInstructionModal').classList.add('hidden')" class="text-slate-400 hover:text-white transition-colors">✕</button>
+        </div>
+
+        <div class="space-y-3.5 text-xs text-slate-300 max-h-[70vh] overflow-y-auto pr-1">
+            <div class="cyber-glass bg-[#060814] p-3.5 rounded-2xl border border-blue-500/20 space-y-1">
+                <div class="font-black text-blue-300">1. Включите сообщения в сообществе</div>
+                <p class="text-[11px] text-slate-400">Перейдите в группу ВКонтакте → <b>Управление</b> → <b>Сообщения</b> → установите статус <b>«Включены»</b> и сохраните.</p>
+            </div>
+
+            <div class="cyber-glass bg-[#060814] p-3.5 rounded-2xl border border-blue-500/20 space-y-1">
+                <div class="font-black text-blue-300">2. Создайте Ключ доступа сообщества</div>
+                <p class="text-[11px] text-slate-400">В группе откройте <b>Управление</b> → <b>Работа с API</b> → <b>Ключи доступа</b> → нажмите <b>«Создать ключ»</b>. Отметьте галочки: <i>«Разрешить доступ к сообщениям сообщества»</i> и <i>«Разрешить доступ к управлению сообществом»</i>. Скопируйте полученный ключ в поле настроек.</p>
+            </div>
+
+            <div class="cyber-glass bg-[#060814] p-3.5 rounded-2xl border border-blue-500/20 space-y-1">
+                <div class="font-black text-blue-300">3. Включите Long Poll API</div>
+                <p class="text-[11px] text-slate-400">В разделе <b>Работа с API</b> перейдите на вкладку <b>Long Poll API</b> → включите его (версия API 5.199). Во вкладке <b>«Типы событий»</b> отметьте: <b>Входящие сообщения</b>.</p>
+            </div>
+
+            <div class="cyber-glass bg-emerald-500/10 p-3.5 rounded-2xl border border-emerald-500/30 text-emerald-200 space-y-1">
+                <div class="font-black text-white">4. Как участникам подключиться к боту:</div>
+                <p class="text-[11px]">Любой участник команды может написать в сообщения вашей группы команду:<br>
+                <code class="bg-black/40 px-2 py-0.5 rounded font-mono text-cyan-300">/login логин пароль</code><br>
+                Либо просто указать свой цифровой VK ID в личном профиле на сайте. После этого бот сразу пришлет клавиатуру с кнопками «📋 Мои задачи» и «🔥 Дедлайны»!</p>
+            </div>
+        </div>
+
+        <div class="pt-2 flex justify-end">
+            <button type="button" onclick="document.getElementById('vkInstructionModal').classList.add('hidden')"
+                    class="px-5 py-2 text-xs font-black bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-md transition-all">
+                Понятно
+            </button>
+        </div>
     </div>
 </div>
 

@@ -59,7 +59,9 @@ async function initDb() {
       is_approved BOOLEAN NOT NULL DEFAULT 1,
       completed_tasks INTEGER NOT NULL DEFAULT 0,
       average_score FLOAT NOT NULL DEFAULT 0.0,
-      avatar_url VARCHAR(500)
+      avatar_url VARCHAR(500),
+      vk_id VARCHAR(64) UNIQUE,
+      can_create_tasks INTEGER NOT NULL DEFAULT 0
     )
   `);
 
@@ -67,6 +69,18 @@ async function initDb() {
     await run('ALTER TABLE users ADD COLUMN avatar_url VARCHAR(500)');
   } catch (e) {
     // Column already exists or table was just created with it
+  }
+
+  try {
+    await run('ALTER TABLE users ADD COLUMN vk_id VARCHAR(64)');
+  } catch (e) {
+    // Column already exists or table was just created with it
+  }
+
+  try {
+    await run('ALTER TABLE users ADD COLUMN can_create_tasks INTEGER NOT NULL DEFAULT 0');
+  } catch (e) {
+    // Column already exists
   }
 
   await run(`

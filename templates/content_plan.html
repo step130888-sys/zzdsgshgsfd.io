@@ -25,7 +25,7 @@
             </p>
         </div>
 
-        {% if current_user.access_level >= 2 %}
+        {% if current_user.access_level >= 2 or current_user.can_create_tasks %}
         <button onclick="document.getElementById('createTaskModal').classList.remove('hidden')" class="relative z-10 btn-neon text-white font-black text-xs md:text-sm px-6 py-3.5 rounded-full transition-all flex items-center space-x-2 flex-shrink-0 cursor-pointer">
             <span>+ Новая задача</span>
         </button>
@@ -68,8 +68,14 @@
             {% endif %}
 
             <div class="flex-grow"></div>
-            <div class="text-xs text-slate-400 font-medium">
-                Всего отобрано: <b class="text-violet-300">{{ tasks|length }}</b> задач
+            <div class="flex flex-wrap items-center gap-3">
+                <div class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-violet-500/15 border border-violet-500/30 text-violet-300 text-[11px] font-bold shadow-sm">
+                    <span>🔥</span>
+                    <span>Сортировка: горящие дедлайны наверху</span>
+                </div>
+                <div class="text-xs text-slate-400 font-medium">
+                    Всего: <b class="text-white">{{ tasks|length }}</b> задач
+                </div>
             </div>
         </form>
     </div>
@@ -156,13 +162,20 @@
                         <td class="py-3.5 px-3 align-top text-center whitespace-nowrap">
                             {% if task.deadline %}
                             <div class="inline-flex flex-col items-center">
-                                <span class="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold
+                                <span class="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold
                                     {% if task.status == 'done' %}bg-white/5 text-slate-400 border border-white/10
+                                    {% elif task.is_expired %}bg-rose-950/60 text-rose-300 border border-rose-500/50 shadow-[0_0_12px_rgba(244,63,94,0.35)]
+                                    {% elif task.is_urgent %}bg-amber-950/60 text-amber-300 border border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.35)]
                                     {% else %}bg-violet-950/40 text-violet-300 border border-violet-500/40 shadow-[0_0_8px_rgba(139,92,246,0.2)]{% endif %}"
                                     title="Срок сдачи задачи">
-                                    <span>⏰</span>
+                                    <span>{% if task.status != 'done' and task.is_expired %}🔥{% elif task.status != 'done' and task.is_urgent %}⚡{% else %}⏰{% endif %}</span>
                                     <span>{{ task.deadline.replace('T', ' ') }}</span>
                                 </span>
+                                {% if task.status != 'done' and task.is_expired %}
+                                <span class="text-[9px] font-black text-rose-400 uppercase tracking-wider mt-0.5">Горит / Просрочен</span>
+                                {% elif task.status != 'done' and task.is_urgent %}
+                                <span class="text-[9px] font-black text-amber-300 uppercase tracking-wider mt-0.5">Срочный дедлайн</span>
+                                {% endif %}
                                 {% if current_user.access_level >= 3 %}
                                 <button type="button"
                                         onclick="openDeadlineModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}', '{{ task.deadline or '' }}')"
@@ -180,7 +193,7 @@
                                     <span>+ Дедлайн</span>
                                 </button>
                                 {% else %}
-                                <span class="text-xs text-slate-500 italic">—</span>
+                                <span class="text-xs text-slate-500 italic">Без дедлайна</span>
                                 {% endif %}
                             {% endif %}
                         </td>
@@ -315,8 +328,8 @@
     </div>
 </div>
 
-<!-- Modal: Create Task (Levels 2-4) -->
-{% if current_user.access_level >= 2 %}
+<!-- Modal: Create Task (Levels 2-4 or Level 1 with permission) -->
+{% if current_user.access_level >= 2 or current_user.can_create_tasks %}
 <div id="createTaskModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4">
     <div class="cyber-glass-glow rounded-3xl max-w-lg w-full p-6 md:p-7 shadow-2xl border border-violet-500/40 text-white">
         <div class="flex items-center justify-between pb-4 border-b border-white/10">
@@ -339,7 +352,7 @@
                 <div>
                     <label class="block text-xs font-bold uppercase text-slate-300 mb-1">Направление *</label>
                     <select name="direction" required class="w-full text-sm px-3.5 py-3 bg-[#080B1C] border border-violet-500/30 rounded-2xl text-white focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30 font-bold">
-                        {% if current_user.access_level == 2 %}
+                        {% if current_user.access_level <= 2 %}
                         <option value="{{ current_user.role }}" selected>{{ current_user.role }} (Ваш цех)</option>
                         {% else %}
                         <option value="Фото">Фото</option>
@@ -371,9 +384,9 @@
                 <span class="text-[10px] text-slate-400 mt-1 block">Необязательно. Руководство сможет изменить или поставить дедлайн позже.</span>
             </div>
 
-            {% if current_user.access_level == 2 %}
+            {% if current_user.access_level <= 2 %}
             <div class="bg-violet-950/40 border border-violet-500/30 rounded-2xl p-3 text-xs text-violet-300">
-                ℹ️ <b>Ограничение главы цеха:</b> вы можете назначать исполнителей только из своего направления (<b>{{ current_user.role }}</b>).
+                ℹ️ <b>Ограничение направления:</b> вы можете назначать задачи и исполнителей только своего направления (<b>{{ current_user.role }}</b>).
             </div>
             {% endif %}
 

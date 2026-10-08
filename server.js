@@ -9,6 +9,7 @@ const db = require('./db');
 const { getCurrentUserMiddleware, requireAuth, requireLevel } = require('./auth');
 const gdriveService = require('./gdriveService');
 const telegramService = require('./telegramService');
+const vkService = require('./vkService');
 
 // Polyfills for Jinja2 template compatibility
 if (!String.prototype.startswith) {
@@ -267,7 +268,8 @@ app.post('/admin/users/:id/approve', requireAuth, requireLevel(4), async (req, r
   }
 
   const levelClamped = Math.max(1, Math.min(4, accessLevel));
-  await db.run('UPDATE users SET is_approved = 1, access_level = ? WHERE id = ?', [levelClamped, profileId]);
+  const canCreateTasks = (req.body.can_create_tasks === '1' || req.body.can_create_tasks === 'true' || req.body.can_create_tasks === 'on') ? 1 : 0;
+  await db.run('UPDATE users SET is_approved = 1, access_level = ?, can_create_tasks = ? WHERE id = ?', [levelClamped, canCreateTasks, profileId]);
 
   const msg = encodeURIComponent(`Профиль ${targetUser.name} (@${targetUser.username}) успешно одобрен с уровнем ${levelClamped}!`);
   res.redirect(`/admin/users?msg=${msg}`);
@@ -320,6 +322,21 @@ app.post('/admin/users/:id/delete', requireAuth, requireLevel(4, 'Удалять
   res.redirect(`/admin/users?msg=${msg}`);
 });
 
+app.post('/admin/users/:id/toggle-task-creation', requireAuth, requireLevel(4, 'Только администраторы (4 уровень) могут менять права создания задач.'), async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+  const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
+  if (!targetUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect('/admin/users?error=' + err);
+  }
+
+  const newVal = targetUser.can_create_tasks ? 0 : 1;
+  await db.run('UPDATE users SET can_create_tasks = ? WHERE id = ?', [newVal, profileId]);
+  const redirectTo = req.body.redirect_to || '/admin/users';
+  const msg = encodeURIComponent(`Доступ к созданию задач в контент-плане для «${targetUser.name}» ${newVal ? 'включен ✅' : 'отключен ✕'}.`);
+  res.redirect(`${redirectTo}?msg=${msg}`);
+});
+
 app.post('/admin/users/:id/inline-edit', requireAuth, requireLevel(4, 'Недостаточно прав. Только администраторы (4 уровень) могут редактировать участников.'), upload.single('avatar_file'), async (req, res) => {
   const profileId = parseInt(req.params.id, 10);
   const name = (req.body.name || '').trim();
@@ -329,6 +346,7 @@ app.post('/admin/users/:id/inline-edit', requireAuth, requireLevel(4, 'Недо�
   const redirectTo = req.body.redirect_to || '/admin/users';
   const avatarUrlInput = (req.body.avatar_url || '').trim();
   const removeAvatar = req.body.remove_avatar === '1' || req.body.remove_avatar === 'true';
+  const canCreateTasks = (req.body.can_create_tasks === '1' || req.body.can_create_tasks === 'true' || req.body.can_create_tasks === 'on') ? 1 : 0;
 
   const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
   if (!targetUser) {
@@ -372,8 +390,8 @@ app.post('/admin/users/:id/inline-edit', requireAuth, requireLevel(4, 'Недо�
   }
 
   await db.run(
-    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ?, avatar_url = ? WHERE id = ?',
-    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, targetUser.avatar_url, profileId]
+    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ?, avatar_url = ?, can_create_tasks = ? WHERE id = ?',
+    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, targetUser.avatar_url, canCreateTasks, profileId]
   );
 
   const msg = encodeURIComponent(`Данные участника ${targetUser.name} успешно обновлены!`);
@@ -408,6 +426,7 @@ app.get('/profile/:id', requireAuth, async (req, res) => {
     user_tasks: userTasks,
     in_progress_count: inProgressCount,
     review_count: reviewCount,
+    vk_config: vkService.getConfig(),
     gdrive_folder_url: gdriveService.getTargetFolderUrl(),
     error: req.query.error,
     msg: req.query.msg
@@ -496,6 +515,7 @@ app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточ
   const accessLevel = req.body.access_level !== undefined ? parseInt(req.body.access_level, 10) : null;
   const avatarUrlInput = (req.body.avatar_url || '').trim();
   const removeAvatar = req.body.remove_avatar === '1' || req.body.remove_avatar === 'true';
+  const vkIdInput = req.body.vk_id !== undefined ? (req.body.vk_id || '').trim() : undefined;
 
   const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [profileId]);
   if (!targetUser) {
@@ -506,6 +526,15 @@ app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточ
   if (name) targetUser.name = name;
   if (password) targetUser.password_hash = db.hashPassword(password);
   if (role) targetUser.role = role;
+
+  if (vkIdInput !== undefined) {
+    if (vkIdInput) {
+      const resolved = await vkService.resolveNumericUserId(vkIdInput);
+      targetUser.vk_id = resolved ? String(resolved) : null;
+    } else {
+      targetUser.vk_id = null;
+    }
+  }
 
   if (accessLevel !== null && !isNaN(accessLevel)) {
     if (targetUser.username === db.ROOT_ADMIN_USERNAME) {
@@ -545,9 +574,13 @@ app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточ
     targetUser.avatar_url = avatarUrlInput;
   }
 
+  const canCreateTasks = req.body.can_create_tasks !== undefined
+    ? ((req.body.can_create_tasks === '1' || req.body.can_create_tasks === 'true' || req.body.can_create_tasks === 'on') ? 1 : 0)
+    : (targetUser.can_create_tasks || 0);
+
   await db.run(
-    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ?, avatar_url = ? WHERE id = ?',
-    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, targetUser.avatar_url, profileId]
+    'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ?, avatar_url = ?, vk_id = ?, can_create_tasks = ? WHERE id = ?',
+    [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, targetUser.avatar_url, targetUser.vk_id, canCreateTasks, profileId]
   );
 
   const msg = encodeURIComponent(`Данные профиля «${targetUser.name}» успешно обновлены!`);
@@ -558,6 +591,30 @@ app.post('/profile/telegram-bind', requireAuth, async (req, res) => {
   const telegramId = (req.body.telegram_id || '').trim();
   await db.run('UPDATE users SET telegram_id = ? WHERE id = ?', [telegramId || null, req.user.id]);
   const msg = encodeURIComponent('Telegram успешно сохранен в вашем профиле!');
+  res.redirect(`/profile/${req.user.id}?msg=${msg}`);
+});
+
+app.post('/profile/vk-bind', requireAuth, async (req, res) => {
+  let rawVk = (req.body.vk_id || '').trim();
+  let vkId = null;
+
+  if (rawVk) {
+    const resolved = await vkService.resolveNumericUserId(rawVk);
+    if (!resolved) {
+      const err = encodeURIComponent(`Не удалось найти страницу ВКонтакте по ссылке или ID «${rawVk}». Проверьте ссылку.`);
+      return res.redirect(`/profile/${req.user.id}?error=${err}`);
+    }
+    vkId = String(resolved);
+
+    const existing = await db.get('SELECT id, name FROM users WHERE vk_id = ? AND id != ?', [vkId, req.user.id]);
+    if (existing) {
+      const err = encodeURIComponent(`Этот VK ID (${vkId}) уже привязан к аккаунту «${existing.name}».`);
+      return res.redirect(`/profile/${req.user.id}?error=${err}`);
+    }
+  }
+
+  await db.run('UPDATE users SET vk_id = ? WHERE id = ?', [vkId, req.user.id]);
+  const msg = encodeURIComponent(vkId ? `VK профиль (id${vkId}) успешно привязан!` : 'VK профиль успешно отвязан.');
   res.redirect(`/profile/${req.user.id}?msg=${msg}`);
 });
 
@@ -585,16 +642,33 @@ app.get('/content-plan', requireAuth, async (req, res) => {
   if (where.length > 0) {
     query += ' WHERE ' + where.join(' AND ');
   }
-  query += ' ORDER BY id DESC';
+  query += ` ORDER BY 
+    CASE 
+      WHEN deadline IS NOT NULL AND TRIM(deadline) != '' THEN 0 
+      ELSE 1 
+    END ASC, 
+    deadline ASC, 
+    id DESC`;
 
   const tasks = await db.all(query, params);
+  const now = new Date();
   for (const t of tasks) {
     t.assigned_to = t.assigned_to_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.assigned_to_id]) : null;
     t.comments = await db.all('SELECT * FROM task_comments WHERE task_id = ?', [t.id]);
+
+    if (t.deadline) {
+      const dDate = new Date(t.deadline);
+      const diffHours = (dDate - now) / (1000 * 60 * 60);
+      t.is_expired = diffHours < 0;
+      t.is_urgent = diffHours >= 0 && diffHours <= 48;
+    } else {
+      t.is_expired = false;
+      t.is_urgent = false;
+    }
   }
 
   let assignableUsers = [];
-  if (req.user.access_level === 2) {
+  if (req.user.access_level === 2 || (req.user.access_level === 1 && req.user.can_create_tasks)) {
     assignableUsers = await db.all('SELECT * FROM users WHERE role = ? AND is_approved = 1', [req.user.role]);
   } else {
     assignableUsers = await db.all('SELECT * FROM users WHERE access_level <= 3 AND is_approved = 1');
@@ -612,19 +686,24 @@ app.get('/content-plan', requireAuth, async (req, res) => {
   });
 });
 
-app.post('/content-plan/create', requireAuth, requireLevel(2, 'Недостаточно прав. Создавать задачи могут только главы направлений и руководство.'), async (req, res) => {
+app.post('/content-plan/create', requireAuth, async (req, res) => {
+  if (req.user.access_level < 2 && !req.user.can_create_tasks) {
+    const err = encodeURIComponent('Недостаточно прав. Создавать задачи могут только главы направлений, руководство или участники с персональным доступом.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
   const title = (req.body.title || '').trim();
   const description = (req.body.description || '').trim();
-  const direction = (req.body.direction || '').trim();
+  const direction = (req.body.direction || '').trim() || req.user.role;
   const deadline = (req.body.deadline || '').trim() || null;
   const assignedToIdStr = (req.body.assigned_to_id || '').trim();
   const assigneeIdVal = assignedToIdStr ? parseInt(assignedToIdStr, 10) : null;
 
-  // Level 2 restriction: can only assign within their direction
-  if (req.user.access_level === 2 && assigneeIdVal !== null) {
+  // Level 1 or 2 restriction: can only assign within their direction
+  if (req.user.access_level <= 2 && assigneeIdVal !== null) {
     const assignee = await db.get('SELECT * FROM users WHERE id = ?', [assigneeIdVal]);
     if (!assignee || assignee.role !== req.user.role) {
-      const err = encodeURIComponent(`Ограничение главы цеха: вы можете назначать задачи только участникам направления '${req.user.role}'.`);
+      const err = encodeURIComponent(`Ограничение: вы можете назначать задачи только участникам направления '${req.user.role}'.`);
       return res.redirect(`/content-plan?error=${err}`);
     }
   }
@@ -635,6 +714,24 @@ app.post('/content-plan/create', requireAuth, requireLevel(2, 'Недостат�
      VALUES (?, ?, ?, ?, ?, ?)`,
     [title, description, direction, initialStatus, deadline, assigneeIdVal]
   );
+
+  const createdTask = await db.get('SELECT * FROM tasks WHERE id = ?', [result.lastID]);
+  if (assigneeIdVal) {
+    const assignee = await db.get('SELECT * FROM users WHERE id = ?', [assigneeIdVal]);
+    if (assignee) {
+      try {
+        await vkService.notifyTaskAssigned(createdTask, assignee);
+      } catch (e) {
+        console.error('Error notifying VK task assigned:', e);
+      }
+    }
+  } else {
+    try {
+      await vkService.notifyNewOpenTask(createdTask);
+    } catch (e) {
+      console.error('Error notifying VK new open task:', e);
+    }
+  }
 
   const msg = encodeURIComponent(`Задача #${result.lastID} '${title}' успешно добавлена в контент-план.`);
   res.redirect(`/content-plan?msg=${msg}`);
@@ -656,6 +753,18 @@ app.post('/task/:id/deadline', requireAuth, requireLevel(3, 'Недостато�
   }
 
   await db.run('UPDATE tasks SET deadline = ? WHERE id = ?', [deadline, taskId]);
+
+  if (task.assigned_to_id) {
+    const assignee = await db.get('SELECT * FROM users WHERE id = ?', [task.assigned_to_id]);
+    if (assignee) {
+      try {
+        await vkService.notifyTaskDeadlineChanged(task, assignee, deadline);
+      } catch (e) {
+        console.error('Error notifying VK deadline change:', e);
+      }
+    }
+  }
+
   const dlDisplay = deadline ? deadline.replace('T', ' ') : 'снят';
   const msg = encodeURIComponent(`Дедлайн по задаче #${task.id} успешно обновлен (${dlDisplay})!`);
   res.redirect(`${target}?msg=${msg}`);
@@ -960,6 +1069,15 @@ app.post('/task/:id/status', requireAuth, requireLevel(2, 'Недостаточ�
       await telegramService.notifyTaskRework(task, req.user, reworkNotes);
     } catch (e) {}
 
+    if (oldAssigneeId) {
+      const assignee = await db.get('SELECT * FROM users WHERE id = ?', [oldAssigneeId]);
+      if (assignee) {
+        try {
+          await vkService.notifyTaskRework(task, assignee, reworkNotes);
+        } catch (e) {}
+      }
+    }
+
     const msg = encodeURIComponent(`Задача #${task.id} отправлена на доработку. Исполнитель уведомлен!`);
     return res.redirect(`${target}?msg=${msg}`);
   } else {
@@ -1005,6 +1123,9 @@ app.get('/management', requireAuth, requireLevel(3, 'Доступ к панел�
     team_avg_score: teamAvgScore,
     bot_username: telegramService.getBotUsername(),
     leadership_chat_id: telegramService.getLeadershipChatId(),
+    telegram_config: telegramService.getConfig(),
+    vk_config: vkService.getConfig(),
+    vk_bot_running: vkService.botWorker.isRunning,
     gdrive_folder_url: gdriveService.getTargetFolderUrl(),
     gdrive_info: gdriveService.getServiceAccountInfo(),
     pending_gdrive_count: pendingGdriveCount,
@@ -1014,12 +1135,32 @@ app.get('/management', requireAuth, requireLevel(3, 'Доступ к панел�
   });
 });
 
+app.post('/management/telegram-config', requireAuth, requireLevel(3, 'Только руководство (Уровень 3+) может менять настройки Telegram бота.'), async (req, res) => {
+  const proxyUrl = (req.body.proxy_url || '').trim();
+  const apiBaseUrl = (req.body.api_base_url || '').trim() || 'https://api.telegram.org';
+
+  telegramService.saveConfig({
+    proxy_url: proxyUrl,
+    api_base_url: apiBaseUrl
+  });
+
+  const msg = encodeURIComponent('Настройки сети Telegram (Прокси / Зеркало API) сохранены!');
+  res.redirect(`/management?msg=${msg}`);
+});
+
 app.post('/management/telegram-test', requireAuth, requireLevel(3, 'Только руководство (Уровень 3+) может отправлять тестовые оповещения.'), async (req, res) => {
   const targetChat = (req.body.chat_id || '').trim() || req.user.telegram_id || telegramService.getLeadershipChatId();
 
-  if (!targetChat) {
-    const err = encodeURIComponent('Укажите Telegram Chat ID или привяжите свой аккаунт через бота @ping_sstu_bot.');
+  // Test network connectivity to Telegram API
+  const testConn = await telegramService.testTelegramConnection();
+  if (!testConn.ok) {
+    const err = encodeURIComponent(`Связь с Telegram API недоступна: ${testConn.error}`);
     return res.redirect(`/management?error=${err}`);
+  }
+
+  if (!targetChat) {
+    const msg = encodeURIComponent('✅ Связь с Telegram API работает штатно! Укажите Chat ID, чтобы отправить пробное сообщение.');
+    return res.redirect(`/management?msg=${msg}`);
   }
 
   const ok = await telegramService.sendTestNotification(targetChat);
@@ -1037,6 +1178,59 @@ app.post('/management/telegram-set-group', requireAuth, requireLevel(3), (req, r
   telegramService.saveConfig({ leadership_group_chat_id: cid || null });
   const msg = encodeURIComponent(`Общий чат руководства (${cid || 'сброшен'}) успешно обновлен!`);
   res.redirect(`/management?msg=${msg}`);
+});
+
+app.post('/management/vk-config', requireAuth, requireLevel(3, 'Только руководство (Уровень 3+) может менять настройки VK бота.'), async (req, res) => {
+  const token = (req.body.vk_group_token || '').trim();
+  const groupId = (req.body.vk_group_id || '').trim();
+  const isEnabled = req.body.is_enabled === 'on' || req.body.is_enabled === 'true' || req.body.is_enabled === '1';
+
+  const updates = { is_enabled: isEnabled };
+  if (token) updates.vk_group_token = token;
+  if (groupId !== undefined) updates.vk_group_id = groupId;
+
+  vkService.saveConfig(updates);
+
+  if (isEnabled && (token || vkService.getGroupToken())) {
+    vkService.botWorker.restart();
+  } else {
+    vkService.botWorker.stop();
+  }
+
+  const msg = encodeURIComponent('Настройки VK-бота успешно сохранены!');
+  res.redirect(`/management?msg=${msg}`);
+});
+
+app.post('/management/vk-test', requireAuth, requireLevel(3, 'Только руководство (Уровень 3+) может отправлять тестовые VK оповещения.'), async (req, res) => {
+  let targetVkInput = (req.body.vk_id || '').trim() || req.user.vk_id;
+  if (!targetVkInput) {
+    const err = encodeURIComponent('Укажите VK ID или ссылку на страницу для проверки.');
+    return res.redirect(`/management?error=${err}`);
+  }
+
+  const numericId = await vkService.resolveNumericUserId(targetVkInput);
+  if (!numericId) {
+    const err = encodeURIComponent(`Не удалось найти страницу ВКонтакте: «${targetVkInput}». Проверьте ссылку или укажите цифровой ID.`);
+    return res.redirect(`/management?error=${err}`);
+  }
+
+  const testMsg = [
+    '🔔 ТЕСТОВОЕ ОПОВЕЩЕНИЕ СТУДСОВЕТА',
+    '━━━━━━━━━━━━━━━━━━',
+    'Интеграция с ботом ВКонтакте медиацентра ОСО СГТУ работает штатно!',
+    'Вы будете получать мгновенные уведомления о назначенных задачах и дедлайнах.',
+    '━━━━━━━━━━━━━━━━━━',
+    '💡 Нажмите «📋 Мои задачи» или «🔥 Горящие дедлайны», чтобы проверить доступные команды.'
+  ].join('\n');
+
+  const ok = await vkService.sendVkMessage(numericId, testMsg);
+  if (ok) {
+    const msg = encodeURIComponent(`Тестовое оповещение успешно отправлено пользователю VK (ID: ${numericId})!`);
+    res.redirect(`/management?msg=${msg}`);
+  } else {
+    const err = encodeURIComponent(`Не удалось отправить сообщение в VK (${numericId}). Убедитесь, что в группе включены «Возможности ботов» (Управление -> Сообщения -> Настройки для бота), а пользователь разрешил получение сообщений от группы.`);
+    return res.redirect(`/management?error=${err}`);
+  }
 });
 
 app.post('/management/gdrive/config', requireAuth, requireLevel(3, 'Только руководство (Уровень 3+) может менять настройки Google Диска.'), (req, res) => {
@@ -1218,6 +1412,7 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 [Node.js Engine] Server running on http://0.0.0.0:${PORT}`);
     telegramService.botWorker.start();
+    vkService.botWorker.start();
   });
 }
 

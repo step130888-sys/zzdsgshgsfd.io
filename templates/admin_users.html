@@ -71,12 +71,16 @@
 
                 <!-- Approval / Rejection form -->
                 <div class="flex flex-wrap items-center gap-3">
-                    <form action="/admin/users/{{ u.id }}/approve" method="POST" class="flex items-center space-x-2">
+                    <form action="/admin/users/{{ u.id }}/approve" method="POST" class="flex flex-wrap items-center gap-2">
                         <select name="access_level" class="text-xs font-bold bg-[#060814] border border-violet-500/30 text-white rounded-xl px-3 py-2 focus:outline-none focus:border-cyan-400">
                             <option value="1" selected>Уровень 1 (Исполнитель)</option>
                             <option value="2">Уровень 2 (Глава цеха)</option>
                             <option value="3">Уровень 3 (Руководство)</option>
                         </select>
+                        <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#060814] border border-violet-500/30 rounded-xl text-xs text-slate-300 font-bold cursor-pointer hover:border-cyan-400 transition-colors" title="Разрешить создание задач в контент-плане">
+                            <input type="checkbox" name="can_create_tasks" value="1" class="rounded bg-[#0B0F24] border-violet-500/40 text-cyan-400 focus:ring-0">
+                            <span>КП Задачи</span>
+                        </label>
                         <button type="submit" class="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-black text-xs px-4 py-2 rounded-xl shadow-md transition-all hover:scale-105">
                             ✓ Одобрить
                         </button>
@@ -200,6 +204,9 @@
                             <span>Уровень</span>
                             <span id="admin-sort-icon-level" class="ml-1 text-[10px]">↕️</span>
                         </th>
+                        <th class="py-3 px-6 text-center" title="Право на создание задач в контент-плане">
+                            <span>КП Задачи</span>
+                        </th>
                         <th onclick="toggleSortHeaderAdmin('completed')" class="py-3 px-6 text-center cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по задачам">
                             <span>Выполнено</span>
                             <span id="admin-sort-icon-completed" class="ml-1 text-[10px]">↕️</span>
@@ -264,6 +271,27 @@
                             <span class="font-black text-slate-300">Ур. {{ u.access_level }}</span>
                         </td>
 
+                        <!-- Колонка: Доступ к созданию задач в КП -->
+                        <td class="py-3.5 px-6 text-center whitespace-nowrap" onclick="event.stopPropagation()">
+                            {% if u.access_level >= 2 %}
+                            <span class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20" title="Доступно по умолчанию для уровней 2-4">
+                                <span>✓</span><span>Ур. {{ u.access_level }}+</span>
+                            </span>
+                            {% else %}
+                            <form action="/admin/users/{{ u.id }}/toggle-task-creation" method="POST" class="inline-block">
+                                <button type="submit" title="Нажмите, чтобы переключить право создавать задачи в контент-плане" class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl text-xs font-black transition-all shadow-sm {% if u.can_create_tasks %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 hover:scale-105 shadow-[0_0_10px_rgba(16,185,129,0.2)]{% else %}bg-slate-800/80 text-slate-400 border border-slate-700 hover:text-slate-200 hover:bg-slate-700/80{% endif %}">
+                                    {% if u.can_create_tasks %}
+                                    <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981] animate-pulse"></span>
+                                    <span>Вкл ✅</span>
+                                    {% else %}
+                                    <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+                                    <span>Выкл ✕</span>
+                                    {% endif %}
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
+
                         <td class="py-3.5 px-6 text-center font-black text-white">
                             {{ u.completed_tasks }}
                         </td>
@@ -304,7 +332,7 @@
 
                     <!-- Строка инлайн-редактирования -->
                     <tr id="row-edit-{{ u.id }}" data-edit-id="{{ u.id }}" class="user-edit-row hidden bg-[#060814]/95 border-y-2 border-violet-500/40">
-                        <td colspan="7" class="p-5">
+                        <td colspan="8" class="p-5">
                             <form action="/admin/users/{{ u.id }}/inline-edit" method="POST" enctype="multipart/form-data" class="flex flex-wrap items-end gap-3.5" onclick="event.stopPropagation()">
                                 <input type="hidden" name="redirect_to" value="/admin/users">
 
@@ -359,6 +387,15 @@
                                     {% endif %}
                                 </div>
 
+                                <!-- Создание задач в КП (для 1 уровня) -->
+                                <div class="min-w-[175px]">
+                                    <label class="block text-[11px] font-black uppercase text-violet-300 mb-1">Создание задач в КП</label>
+                                    <label class="flex items-center space-x-2 px-3 py-2 bg-[#0B0F24] border border-violet-500/30 rounded-xl cursor-pointer hover:border-cyan-400 transition-colors">
+                                        <input type="checkbox" name="can_create_tasks" value="1" {% if u.can_create_tasks %}checked{% endif %} class="w-4 h-4 rounded bg-[#060814] border-violet-500/40 text-cyan-400 focus:ring-0 cursor-pointer">
+                                        <span class="text-xs font-bold text-slate-200 select-none">Разрешить (Ур. 1)</span>
+                                    </label>
+                                </div>
+
                                 <!-- Фото профиля (Загрузка файла) -->
                                 <div class="w-48">
                                     <label class="block text-[11px] font-black uppercase text-amber-300 mb-1 flex items-center justify-between">
@@ -389,7 +426,7 @@
 
                     <!-- Сообщение, если по фильтрам никто не найден -->
                     <tr id="admin-empty-state" class="hidden">
-                        <td colspan="7" class="py-12 text-center text-slate-500">
+                        <td colspan="8" class="py-12 text-center text-slate-500">
                             <div class="text-3xl mb-2 filter drop-shadow-[0_0_10px_rgba(167,139,250,0.3)]">🔍</div>
                             <div class="text-sm font-black text-slate-300">Ни один профиль не найден</div>
                             <div class="text-xs text-slate-500 mt-1 font-medium">Попробуйте изменить выбранное направление, уровень или строку поиска</div>

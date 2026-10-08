@@ -78,6 +78,27 @@
                             </button>
                             {% endif %}
                         </div>
+                        <span class="text-slate-600">•</span>
+                        <div class="flex items-center space-x-1.5 text-slate-300">
+                            <span class="text-blue-400 font-bold">VK:</span>
+                            {% if profile_user.vk_id %}
+                            <a href="https://vk.com/id{{ profile_user.vk_id }}" target="_blank" class="font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/25 hover:text-white transition-colors" title="Открыть страницу ВКонтакте">
+                                ✅ id{{ profile_user.vk_id }}
+                            </a>
+                            {% else %}
+                            <span class="font-mono text-violet-300 font-bold bg-violet-500/10 px-2 py-0.5 rounded-md border border-violet-500/20">
+                                не привязан
+                            </span>
+                            {% endif %}
+
+                            {% if profile_user.id == current_user.id %}
+                            <button type="button" onclick="document.getElementById('editVkModal').classList.remove('hidden')"
+                                    class="text-[11px] font-bold text-blue-200 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 px-3 py-1 rounded-full transition-all ml-1 shadow-[0_0_10px_rgba(59,130,246,0.2)]"
+                                    title="Настройки подключения к VK-боту">
+                                💬 VK Бот
+                            </button>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -87,7 +108,8 @@
                 <div>
                     <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Статус в ОСО СГТУ</div>
                     <div class="text-xs font-extrabold text-violet-300 uppercase mt-0.5 bg-violet-500/15 px-3 py-1 rounded-full border border-violet-500/30 inline-block shadow-[0_0_12px_rgba(167,139,250,0.15)]">
-                        {% if profile_user.access_level == 1 %}Участник актива
+                        {% if profile_user.access_level == 1 %}
+                            Участник актива {% if profile_user.can_create_tasks %}<span class="text-cyan-300 ml-1 font-black" title="Включен доступ к созданию задач в контент-плане">• КП Задачи ✅</span>{% endif %}
                         {% elif profile_user.access_level == 2 %}Глава направления
                         {% elif profile_user.access_level == 3 %}Руководитель медиацентра
                         {% elif profile_user.access_level == 4 %}Администратор системы
@@ -604,6 +626,22 @@
                 </div>
             </div>
 
+            <!-- VK ID (для бота) -->
+            <div>
+                <label class="block text-xs font-bold uppercase text-blue-300 mb-1">VK ID (для бота и оповещений)</label>
+                <input type="text" name="vk_id" value="{{ profile_user.vk_id or '' }}" placeholder="Например: 12345678 или vk.com/id..."
+                       class="w-full text-xs font-mono px-3.5 py-2.5 bg-[#060814] border border-blue-500/30 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400">
+            </div>
+
+            <!-- Создание задач в КП (для 1 уровня) -->
+            <div>
+                <label class="block text-xs font-bold uppercase text-violet-300 mb-1">Создание задач в контент-плане</label>
+                <label class="flex items-center space-x-2.5 px-3.5 py-2.5 bg-[#060814] border border-violet-500/30 rounded-xl cursor-pointer hover:border-cyan-400 transition-colors">
+                    <input type="checkbox" name="can_create_tasks" value="1" {% if profile_user.can_create_tasks %}checked{% endif %} class="w-4 h-4 rounded bg-[#0B0F24] border-violet-500/40 text-cyan-400 focus:ring-0 cursor-pointer">
+                    <span class="text-xs font-bold text-slate-200 select-none">Разрешить создание задач (для 1 уровня)</span>
+                </label>
+            </div>
+
             <!-- Фото профиля для администратора -->
             <div class="border-t border-violet-500/15 pt-3">
                 <label class="block text-xs font-bold uppercase text-amber-300 mb-1 flex items-center justify-between">
@@ -673,6 +711,75 @@
                                 class="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white rounded-lg">Отмена</button>
                         <button type="submit"
                                 class="px-4 py-1.5 text-xs font-bold btn-neon text-white rounded-lg shadow-sm">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно привязки VK -->
+<div id="editVkModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-4">
+    <div class="cyber-glass rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-500/30 bg-[#0B0F24]">
+        <div class="flex items-center justify-between pb-4 border-b border-blue-500/20">
+            <div class="flex items-center space-x-2.5">
+                <span class="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-300 flex items-center justify-center font-black text-xs">VK</span>
+                <h3 class="font-bold text-white text-base">Подключение VK-бота</h3>
+            </div>
+            <button onclick="document.getElementById('editVkModal').classList.add('hidden')" class="text-slate-400 hover:text-white transition-colors">✕</button>
+        </div>
+
+        <div class="py-4 space-y-4 text-xs text-slate-300">
+            <div class="cyber-glass bg-blue-500/10 border border-blue-500/30 rounded-2xl p-3.5 text-blue-200">
+                <div class="font-bold mb-1 text-white">Способ 1: Написать боту в сообщения сообщества</div>
+                {% if not vk_config.vk_group_token %}
+                <div class="mb-2.5 bg-amber-500/10 border border-amber-500/20 text-amber-300 p-2 rounded-xl text-[10px]">
+                    ⚠️ Токен сообщества еще не настроен. Администратор может ввести ключ группы в <a href="/management" class="underline font-bold text-white">Панели руководства</a>.
+                </div>
+                {% endif %}
+                {% if vk_config.vk_group_id %}
+                <div class="mb-2">
+                    <a href="https://vk.me/club{{ vk_config.vk_group_id }}" target="_blank"
+                       class="inline-flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow-md transition-all">
+                        <span>💬 Написать боту в группу (vk.me/club{{ vk_config.vk_group_id }}) ↗</span>
+                    </a>
+                </div>
+                {% endif %}
+                <p class="text-[11px] leading-relaxed mb-1.5 text-slate-300">
+                    Откройте диалог с сообществом ВКонтакте и отправьте команду:
+                </p>
+                <div class="bg-[#060814] p-2.5 rounded-xl border border-blue-500/20 font-mono text-cyan-300 text-xs mb-2 select-all">
+                    /login {{ profile_user.username }} &lt;ваш_пароль&gt;
+                </div>
+                <p class="text-[10px] text-slate-400">
+                    Бот мгновенно авторизует вас и отправит кнопки «📋 Мои задачи» и «🔥 Дедлайны».
+                </p>
+            </div>
+
+            <div class="pt-2 border-t border-blue-500/20">
+                <div class="font-bold mb-1 text-white">Способ 2: Указать свой VK ID вручную</div>
+                <form action="/profile/vk-bind" method="POST" class="space-y-3 mt-2">
+                    <div>
+                        <label class="block text-[10px] uppercase font-bold text-slate-400 mb-1">Ваш VK ID или ссылка на профиль</label>
+                        <input type="text" name="vk_id" value="{{ profile_user.vk_id or '' }}"
+                               placeholder="Например: 12345678 или vk.com/id12345678"
+                               class="w-full text-xs font-mono px-3 py-2 bg-[#060814] border border-blue-500/30 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/20">
+                    </div>
+                    <div class="flex items-center justify-between pt-2">
+                        {% if profile_user.vk_id %}
+                        <form action="/profile/vk-bind" method="POST" class="inline">
+                            <input type="hidden" name="vk_id" value="">
+                            <button type="submit" class="text-[11px] font-bold text-rose-400 hover:text-rose-300 underline">Отвязать VK</button>
+                        </form>
+                        {% else %}
+                        <div></div>
+                        {% endif %}
+                        <div class="flex space-x-2">
+                            <button type="button" onclick="document.getElementById('editVkModal').classList.add('hidden')"
+                                    class="px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white rounded-lg">Отмена</button>
+                            <button type="submit"
+                                    class="px-4 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-sm transition-colors">Сохранить</button>
+                        </div>
                     </div>
                 </form>
             </div>

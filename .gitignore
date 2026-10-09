@@ -18,5 +18,6 @@ yarn-error.log*
 Thumbs.db
 .DS_Store
 
-# Temporary uploads (keep sample uploads if needed)
-# uploads/*.tmp
+# SQLite WAL & SHM temporary files
+*.db-wal
+*.db-shm

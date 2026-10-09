@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 
 const db = require('./db');
-const { getCurrentUserMiddleware, requireAuth, requireLevel } = require('./auth');
+const { getCurrentUserMiddleware, requireAuth, requireLevel, invalidateUserCache } = require('./auth');
 const gdriveService = require('./gdriveService');
 const telegramService = require('./telegramService');
 const vkService = require('./vkService');
@@ -80,11 +80,11 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100 MB
 });
 
-// Configure Nunjucks
+// Configure Nunjucks with template caching for peak performance
 const nunjucksEnv = nunjucks.configure(path.join(__dirname, 'templates'), {
   autoescape: true,
   express: app,
-  noCache: true
+  noCache: process.env.NODE_ENV === 'development'
 });
 
 nunjucksEnv.addFilter('format', function (val, ...args) {
@@ -136,7 +136,8 @@ nunjucksEnv.addFilter('isOnline', function (userId) {
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), { maxAge: '1d' }));
+
 
 // Attach current user & global template context
 app.use(getCurrentUserMiddleware);
@@ -306,6 +307,7 @@ app.post('/admin/users/:id/approve', requireAuth, requireLevel(4), async (req, r
   const levelClamped = Math.max(1, Math.min(4, accessLevel));
   const canCreateTasks = (req.body.can_create_tasks === '1' || req.body.can_create_tasks === 'true' || req.body.can_create_tasks === 'on') ? 1 : 0;
   await db.run('UPDATE users SET is_approved = 1, access_level = ?, can_create_tasks = ? WHERE id = ?', [levelClamped, canCreateTasks, profileId]);
+  invalidateUserCache(profileId);
 
   const msg = encodeURIComponent(`Профиль ${targetUser.name} (@${targetUser.username}) успешно одобрен с уровнем ${levelClamped}!`);
   res.redirect(`/admin/users?msg=${msg}`);
@@ -326,6 +328,7 @@ app.post('/admin/users/:id/reject', requireAuth, requireLevel(4), async (req, re
   }
 
   await db.run('DELETE FROM users WHERE id = ?', [profileId]);
+  invalidateUserCache(profileId);
   const msg = encodeURIComponent('Заявка на регистрацию отклонена, временный профиль удален.');
   res.redirect(`/admin/users?msg=${msg}`);
 });
@@ -353,6 +356,7 @@ app.post('/admin/users/:id/delete', requireAuth, requireLevel(4, 'Удалять
   await db.run('UPDATE tasks SET assigned_to_id = NULL, status = "open" WHERE assigned_to_id = ? AND status = "in_progress"', [profileId]);
   await db.run('UPDATE tasks SET assigned_to_id = NULL WHERE assigned_to_id = ?', [profileId]);
   await db.run('DELETE FROM users WHERE id = ?', [profileId]);
+  invalidateUserCache(profileId);
 
   const msg = encodeURIComponent(`Профиль ${targetUser.name} (@${targetUser.username}) удален. Связанные задачи освобождены.`);
   res.redirect(`/admin/users?msg=${msg}`);
@@ -368,6 +372,7 @@ app.post('/admin/users/:id/toggle-task-creation', requireAuth, requireLevel(4, '
 
   const newVal = targetUser.can_create_tasks ? 0 : 1;
   await db.run('UPDATE users SET can_create_tasks = ? WHERE id = ?', [newVal, profileId]);
+  invalidateUserCache(profileId);
   const redirectTo = req.body.redirect_to || '/admin/users';
   const msg = encodeURIComponent(`Доступ к созданию задач в контент-плане для «${targetUser.name}» ${newVal ? 'включен ✅' : 'отключен ✕'}.`);
   res.redirect(`${redirectTo}?msg=${msg}`);
@@ -429,6 +434,7 @@ app.post('/admin/users/:id/inline-edit', requireAuth, requireLevel(4, 'Недо�
     'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ?, avatar_url = ?, can_create_tasks = ? WHERE id = ?',
     [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, targetUser.avatar_url, canCreateTasks, profileId]
   );
+  invalidateUserCache(profileId);
 
   const msg = encodeURIComponent(`Данные участника ${targetUser.name} успешно обновлены!`);
   res.redirect(`${redirectTo}?msg=${msg}`);
@@ -447,14 +453,34 @@ app.get('/profile/:id', requireAuth, async (req, res) => {
     return res.redirect(`/content-plan?error=${err}`);
   }
 
-  const userTasks = await db.all('SELECT * FROM tasks WHERE assigned_to_id = ? ORDER BY id DESC', [profileId]);
-  for (const t of userTasks) {
-    t.graded_by = t.graded_by_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.graded_by_id]) : null;
-    t.comments = await db.all('SELECT * FROM task_comments WHERE task_id = ?', [t.id]);
-  }
+  // Single fast query for tasks + reviewer info + comment count (eliminates N+1 loop)
+  const userTasks = await db.all(`
+    SELECT t.*,
+           g.name AS grader_name, g.role AS grader_role,
+           COALESCE(tc.comment_count, 0) AS comment_count
+    FROM tasks t
+    LEFT JOIN users g ON t.graded_by_id = g.id
+    LEFT JOIN (
+      SELECT task_id, COUNT(*) AS comment_count
+      FROM task_comments
+      GROUP BY task_id
+    ) tc ON t.id = tc.task_id
+    WHERE t.assigned_to_id = ?
+    ORDER BY t.id DESC
+  `, [profileId]);
 
-  const inProgressCount = userTasks.filter(t => t.status === 'in_progress').length;
-  const reviewCount = userTasks.filter(t => t.status === 'review').length;
+  let inProgressCount = 0;
+  let reviewCount = 0;
+  for (const t of userTasks) {
+    if (t.graded_by_id && t.grader_name) {
+      t.graded_by = { id: t.graded_by_id, name: t.grader_name, role: t.grader_role };
+    } else {
+      t.graded_by = null;
+    }
+    t.comments = { length: t.comment_count };
+    if (t.status === 'in_progress') inProgressCount++;
+    else if (t.status === 'review') reviewCount++;
+  }
 
   let openTasksQuery = 'SELECT * FROM tasks WHERE status = "open"';
   const openTasksParams = [];
@@ -570,6 +596,7 @@ app.post('/profile/:id/avatar', requireAuth, upload.single('avatar_file'), async
       }
     }
     await db.run('UPDATE users SET avatar_url = NULL WHERE id = ?', [profileId]);
+    invalidateUserCache(profileId);
     const msg = encodeURIComponent(
       isSelf ? 'Ваше фото профиля успешно удалено.' : `Фото профиля участника «${targetUser.name}» удалено администратором.`
     );
@@ -606,6 +633,7 @@ app.post('/profile/:id/avatar', requireAuth, upload.single('avatar_file'), async
   }
 
   await db.run('UPDATE users SET avatar_url = ? WHERE id = ?', [newAvatarUrl, profileId]);
+  invalidateUserCache(profileId);
 
   const msg = encodeURIComponent(
     isSelf
@@ -690,6 +718,7 @@ app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточ
     'UPDATE users SET name = ?, password_hash = ?, role = ?, access_level = ?, avatar_url = ?, vk_id = ?, can_create_tasks = ? WHERE id = ?',
     [targetUser.name, targetUser.password_hash, targetUser.role, targetUser.access_level, targetUser.avatar_url, targetUser.vk_id, canCreateTasks, profileId]
   );
+  invalidateUserCache(profileId);
 
   const msg = encodeURIComponent(`Данные профиля «${targetUser.name}» успешно обновлены!`);
   res.redirect(`/profile/${profileId}?msg=${msg}`);
@@ -698,6 +727,7 @@ app.post('/profile/:id/edit', requireAuth, requireLevel(4, 'Недостаточ
 app.post('/profile/telegram-bind', requireAuth, async (req, res) => {
   const telegramId = (req.body.telegram_id || '').trim();
   await db.run('UPDATE users SET telegram_id = ? WHERE id = ?', [telegramId || null, req.user.id]);
+  invalidateUserCache(req.user.id);
   const msg = encodeURIComponent('Telegram успешно сохранен в вашем профиле!');
   res.redirect(`/profile/${req.user.id}?msg=${msg}`);
 });
@@ -722,28 +752,70 @@ app.post('/profile/vk-bind', requireAuth, async (req, res) => {
   }
 
   await db.run('UPDATE users SET vk_id = ? WHERE id = ?', [vkId, req.user.id]);
+  invalidateUserCache(req.user.id);
   const msg = encodeURIComponent(vkId ? `VK профиль (id${vkId}) успешно привязан!` : 'VK профиль успешно отвязан.');
   res.redirect(`/profile/${req.user.id}?msg=${msg}`);
 });
 
 // -------------------------------------------------------------
-// Content Plan Routes
+// Content Plan Helper & Routes
 // -------------------------------------------------------------
+
+async function getAssignableUsersFor(user) {
+  const isLeader = (user.access_level >= 3);
+  const isDirectLead = (user.access_level === 2 || (user.access_level === 1 && user.can_create_tasks));
+
+  let sql = `
+    SELECT u.*, COALESCE(tc.active_count, 0) AS active_tasks_count
+    FROM users u
+    LEFT JOIN (
+      SELECT assigned_to_id, COUNT(*) AS active_count
+      FROM tasks
+      WHERE status IN ('in_progress', 'rework')
+      GROUP BY assigned_to_id
+    ) tc ON u.id = tc.assigned_to_id
+    WHERE u.is_approved = 1
+  `;
+  const params = [];
+  if (!isLeader && isDirectLead) {
+    sql += ' AND u.role = ? ORDER BY u.name ASC';
+    params.push(user.role);
+  } else {
+    sql += ' ORDER BY u.role ASC, u.name ASC';
+  }
+  return await db.all(sql, params);
+}
 
 app.get('/content-plan', requireAuth, async (req, res) => {
   const direction = req.query.direction ? req.query.direction.trim() : null;
   const status = req.query.status ? req.query.status.trim() : null;
 
-  let query = 'SELECT * FROM tasks';
+  let query = `
+    SELECT t.*,
+           u.id AS u_id,
+           u.name AS u_name,
+           u.username AS u_username,
+           u.role AS u_role,
+           u.avatar_url AS u_avatar_url,
+           u.access_level AS u_access_level,
+           COALESCE(tc.comment_count, 0) AS comment_count
+    FROM tasks t
+    LEFT JOIN users u ON t.assigned_to_id = u.id
+    LEFT JOIN (
+      SELECT task_id, COUNT(*) AS comment_count
+      FROM task_comments
+      GROUP BY task_id
+    ) tc ON t.id = tc.task_id
+  `;
   const where = [];
   const params = [];
 
   if (direction) {
-    where.push('direction = ?');
+    where.push('t.direction = ?');
     params.push(direction);
   }
   if (status) {
-    where.push('status = ?');
+    where.push('t.status = ?');
     params.push(status);
   }
 
@@ -752,17 +824,24 @@ app.get('/content-plan', requireAuth, async (req, res) => {
   }
   query += ` ORDER BY 
     CASE 
-      WHEN deadline IS NOT NULL AND TRIM(deadline) != '' THEN 0 
+      WHEN t.deadline IS NOT NULL AND TRIM(t.deadline) != '' THEN 0 
       ELSE 1 
     END ASC, 
-    deadline ASC, 
-    id DESC`;
+    t.deadline ASC, 
+    t.id DESC`;
 
   const tasks = await db.all(query, params);
   const now = new Date();
   for (const t of tasks) {
-    t.assigned_to = t.assigned_to_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.assigned_to_id]) : null;
-    t.comments = await db.all('SELECT * FROM task_comments WHERE task_id = ?', [t.id]);
+    t.assigned_to = t.assigned_to_id ? {
+      id: t.u_id,
+      name: t.u_name,
+      username: t.u_username,
+      role: t.u_role,
+      avatar_url: t.u_avatar_url,
+      access_level: t.u_access_level
+    } : null;
+    t.comments = { length: t.comment_count };
 
     if (t.deadline) {
       const dDate = new Date(t.deadline);
@@ -774,20 +853,6 @@ app.get('/content-plan', requireAuth, async (req, res) => {
       t.is_urgent = false;
     }
   }
-
-async function getAssignableUsersFor(user) {
-  let list = [];
-  if (user.access_level === 2 || (user.access_level === 1 && user.can_create_tasks)) {
-    list = await db.all('SELECT * FROM users WHERE role = ? AND is_approved = 1 ORDER BY name ASC', [user.role]);
-  } else {
-    list = await db.all('SELECT * FROM users WHERE is_approved = 1 ORDER BY role ASC, name ASC');
-  }
-  for (const u of list) {
-    const activeRow = await db.get('SELECT COUNT(*) as c FROM tasks WHERE assigned_to_id = ? AND status IN ("in_progress", "rework")', [u.id]);
-    u.active_tasks_count = activeRow ? activeRow.c : 0;
-  }
-  return list;
-}
 
   const assignableUsers = await getAssignableUsersFor(req.user);
 
@@ -802,6 +867,7 @@ async function getAssignableUsersFor(user) {
     msg: req.query.msg
   });
 });
+
 
 app.post('/content-plan/create', requireAuth, async (req, res) => {
   if (req.user.access_level < 2 && !req.user.can_create_tasks) {
@@ -889,19 +955,51 @@ app.post('/task/:id/deadline', requireAuth, requireLevel(3, 'Недостато�
 
 app.get('/task/:id', requireAuth, async (req, res) => {
   const taskId = parseInt(req.params.id, 10);
-  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  const task = await db.get(`
+    SELECT t.*,
+           u.id AS u_id, u.name AS u_name, u.role AS u_role, u.avatar_url AS u_avatar_url,
+           g.id AS g_id, g.name AS g_name, g.role AS g_role
+    FROM tasks t
+    LEFT JOIN users u ON t.assigned_to_id = u.id
+    LEFT JOIN users g ON t.graded_by_id = g.id
+    WHERE t.id = ?
+  `, [taskId]);
 
   if (!task) {
     const err = encodeURIComponent('Задача не найдена.');
     return res.redirect(`/content-plan?error=${err}`);
   }
 
-  task.assigned_to = task.assigned_to_id ? await db.get('SELECT * FROM users WHERE id = ?', [task.assigned_to_id]) : null;
-  task.graded_by = task.graded_by_id ? await db.get('SELECT * FROM users WHERE id = ?', [task.graded_by_id]) : null;
+  task.assigned_to = task.assigned_to_id ? {
+    id: task.u_id,
+    name: task.u_name,
+    role: task.u_role,
+    avatar_url: task.u_avatar_url
+  } : null;
 
-  const rawComments = await db.all('SELECT * FROM task_comments WHERE task_id = ? ORDER BY id ASC', [taskId]);
+  task.graded_by = task.graded_by_id ? {
+    id: task.g_id,
+    name: task.g_name,
+    role: task.g_role
+  } : null;
+
+  const rawComments = await db.all(`
+    SELECT c.*,
+           u.id AS u_id, u.name AS u_name, u.role AS u_role, u.avatar_url AS u_avatar_url, u.access_level AS u_access_level
+    FROM task_comments c
+    LEFT JOIN users u ON c.user_id = u.id
+    WHERE c.task_id = ?
+    ORDER BY c.id ASC
+  `, [taskId]);
+
   for (const c of rawComments) {
-    c.user = await db.get('SELECT * FROM users WHERE id = ?', [c.user_id]);
+    c.user = c.user_id ? {
+      id: c.u_id,
+      name: c.u_name,
+      role: c.u_role,
+      avatar_url: c.u_avatar_url,
+      access_level: c.u_access_level
+    } : null;
   }
   task.comments = rawComments;
 
@@ -917,6 +1015,7 @@ app.get('/task/:id', requireAuth, async (req, res) => {
     msg: req.query.msg
   });
 });
+
 
 app.post('/task/:id/comments', requireAuth, async (req, res) => {
   const taskId = parseInt(req.params.id, 10);
@@ -952,28 +1051,32 @@ app.post('/task/:id/comments', requireAuth, async (req, res) => {
 
 app.get('/api/task/:id/comments', requireAuth, async (req, res) => {
   const taskId = parseInt(req.params.id, 10);
-  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  const task = await db.get('SELECT id, assigned_to_id FROM tasks WHERE id = ?', [taskId]);
   if (!task) {
     return res.status(404).json({ error: 'Task not found' });
   }
 
-  const rawComments = await db.all('SELECT * FROM task_comments WHERE task_id = ? ORDER BY id ASC', [taskId]);
-  const formatted = [];
-  for (const c of rawComments) {
-    const u = await db.get('SELECT * FROM users WHERE id = ?', [c.user_id]);
-    formatted.push({
-      id: c.id,
-      user_id: c.user_id,
-      user_name: u ? u.name : 'Участник',
-      user_role: u ? u.role : '',
-      user_level: u ? u.access_level : 1,
-      user_avatar: u ? u.avatar_url : null,
-      message: c.message,
-      created_at: c.created_at ? c.created_at.strftime('%d.%m %H:%M') : '',
-      is_author_assignee: Boolean(task.assigned_to_id === c.user_id),
-      is_current_user: Boolean(c.user_id === req.user.id)
-    });
-  }
+  const rawComments = await db.all(`
+    SELECT c.id, c.user_id, c.message, c.created_at,
+           u.name AS user_name, u.role AS user_role, u.access_level AS user_level, u.avatar_url AS user_avatar
+    FROM task_comments c
+    LEFT JOIN users u ON c.user_id = u.id
+    WHERE c.task_id = ?
+    ORDER BY c.id ASC
+  `, [taskId]);
+
+  const formatted = rawComments.map(c => ({
+    id: c.id,
+    user_id: c.user_id,
+    user_name: c.user_name || 'Участник',
+    user_role: c.user_role || '',
+    user_level: c.user_level !== null && c.user_level !== undefined ? c.user_level : 1,
+    user_avatar: c.user_avatar || null,
+    message: c.message,
+    created_at: c.created_at ? c.created_at.strftime('%d.%m %H:%M') : '',
+    is_author_assignee: Boolean(task.assigned_to_id === c.user_id),
+    is_current_user: Boolean(c.user_id === req.user.id)
+  }));
   res.json(formatted);
 });
 
@@ -1312,29 +1415,49 @@ app.post('/task/:id/status', requireAuth, requireLevel(2, 'Недостаточ�
 // -------------------------------------------------------------
 
 app.get('/management', requireAuth, requireLevel(3, 'Доступ к панели руководства ограничен (требуется уровень доступа 3 или 4).'), async (req, res) => {
-  const reviewTasks = await db.all('SELECT * FROM tasks WHERE status = "review" ORDER BY id DESC');
+  const reviewTasks = await db.all(`
+    SELECT t.*, u.id AS u_id, u.name AS u_name, u.role AS u_role, u.avatar_url AS u_avatar_url
+    FROM tasks t
+    LEFT JOIN users u ON t.assigned_to_id = u.id
+    WHERE t.status = 'review'
+    ORDER BY t.id DESC
+  `);
   for (const t of reviewTasks) {
-    t.assigned_to = t.assigned_to_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.assigned_to_id]) : null;
+    t.assigned_to = t.assigned_to_id ? { id: t.u_id, name: t.u_name, role: t.u_role, avatar_url: t.u_avatar_url } : null;
   }
 
-  const doneTasksCount = (await db.get('SELECT COUNT(*) as c FROM tasks WHERE status = "done"')).c;
+  const doneTasksRow = await db.get('SELECT COUNT(*) as c FROM tasks WHERE status = "done"');
+  const doneTasksCount = doneTasksRow ? doneTasksRow.c : 0;
 
   const teamMembers = await db.all('SELECT * FROM users WHERE is_approved = 1 ORDER BY access_level DESC, id ASC');
-  for (const member of teamMembers) {
-    member.tasks = await db.all('SELECT * FROM tasks WHERE assigned_to_id = ? ORDER BY id DESC', [member.id]);
-    for (const t of member.tasks) {
-      t.graded_by = t.graded_by_id ? await db.get('SELECT * FROM users WHERE id = ?', [t.graded_by_id]) : null;
+  const allTasks = await db.all(`
+    SELECT t.*, g.name AS graded_by_name, g.role AS graded_by_role
+    FROM tasks t
+    LEFT JOIN users g ON t.graded_by_id = g.id
+    ORDER BY t.id DESC
+  `);
+  const tasksByUserId = new Map();
+  for (const t of allTasks) {
+    if (t.graded_by_id) {
+      t.graded_by = { id: t.graded_by_id, name: t.graded_by_name, role: t.graded_by_role };
+    }
+    const list = tasksByUserId.get(t.assigned_to_id);
+    if (list) {
+      list.push(t);
+    } else {
+      tasksByUserId.set(t.assigned_to_id, [t]);
     }
   }
-
-  const gradedTasks = await db.all('SELECT score FROM tasks WHERE status = "done" AND score IS NOT NULL');
-  let teamAvgScore = 0.0;
-  if (gradedTasks.length > 0) {
-    const sum = gradedTasks.reduce((acc, t) => acc + Number(t.score), 0);
-    teamAvgScore = Math.round((sum / gradedTasks.length) * 100) / 100;
+  for (const member of teamMembers) {
+    member.tasks = tasksByUserId.get(member.id) || [];
   }
 
-  const pendingGdriveCount = (await db.get('SELECT COUNT(*) as c FROM tasks WHERE file_link LIKE "/uploads/%"')).c;
+  const avgRow = await db.get('SELECT ROUND(AVG(score), 2) AS avg_score FROM tasks WHERE status = "done" AND score IS NOT NULL');
+  const teamAvgScore = avgRow && avgRow.avg_score != null ? avgRow.avg_score : 0.0;
+
+  const pendingGdriveRow = await db.get('SELECT COUNT(*) as c FROM tasks WHERE file_link LIKE "/uploads/%"');
+  const pendingGdriveCount = pendingGdriveRow ? pendingGdriveRow.c : 0;
+
 
   res.render('management.html', {
     current_user: req.user,
@@ -1511,33 +1634,44 @@ app.get('/materials', requireAuth, async (req, res) => {
   const direction = req.query.direction ? req.query.direction.trim() : null;
   const category = req.query.category ? req.query.category.trim() : null;
 
-  let query = 'SELECT * FROM work_materials';
+  let query = `
+    SELECT m.*, u.id AS u_id, u.name AS u_name, u.role AS u_role, u.avatar_url AS u_avatar_url
+    FROM work_materials m
+    LEFT JOIN users u ON m.uploaded_by_id = u.id
+  `;
   const where = [];
   const params = [];
 
   if (direction) {
-    where.push('direction = ?');
+    where.push('m.direction = ?');
     params.push(direction);
   }
   if (category) {
-    where.push('category = ?');
+    where.push('m.category = ?');
     params.push(category);
   }
 
   if (where.length > 0) {
     query += ' WHERE ' + where.join(' AND ');
   }
-  query += ' ORDER BY id DESC';
+  query += ' ORDER BY m.id DESC';
 
   const materials = await db.all(query, params);
   for (const m of materials) {
-    m.uploaded_by = m.uploaded_by_id ? await db.get('SELECT * FROM users WHERE id = ?', [m.uploaded_by_id]) : null;
+    m.uploaded_by = m.uploaded_by_id ? {
+      id: m.u_id,
+      name: m.u_name,
+      role: m.u_role,
+      avatar_url: m.u_avatar_url
+    } : null;
   }
 
-  const allMaterials = await db.all('SELECT direction FROM work_materials');
+  const directionCounts = await db.all('SELECT direction, COUNT(*) as c FROM work_materials GROUP BY direction');
   const countsObj = {};
-  for (const m of allMaterials) {
-    countsObj[m.direction] = (countsObj[m.direction] || 0) + 1;
+  let totalCount = 0;
+  for (const row of directionCounts) {
+    countsObj[row.direction] = row.c;
+    totalCount += row.c;
   }
 
   res.render('materials.html', {
@@ -1546,12 +1680,13 @@ app.get('/materials', requireAuth, async (req, res) => {
     selected_direction: direction,
     selected_category: category,
     counts: wrapDict(countsObj),
-    total_count: allMaterials.length,
+    total_count: totalCount,
     gdrive_folder_url: gdriveService.getTargetFolderUrl(),
     error: req.query.error,
     msg: req.query.msg
   });
 });
+
 
 app.post('/materials/create', requireAuth, requireLevel(3, 'Недостаточно прав. Загружать материалы могут только руководители (3 и 4 уровень доступа).'), upload.single('file_upload'), async (req, res) => {
   const title = (req.body.title || '').trim();

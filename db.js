@@ -5,6 +5,15 @@ const crypto = require('crypto');
 const DB_PATH = path.join(__dirname, 'media_app.db');
 const db = new sqlite3.Database(DB_PATH);
 
+// High-performance SQLite engine tuning
+db.serialize(() => {
+  db.run('PRAGMA journal_mode = WAL');
+  db.run('PRAGMA synchronous = NORMAL');
+  db.run('PRAGMA cache_size = -64000'); // 64MB RAM page cache
+  db.run('PRAGMA temp_store = MEMORY');
+  db.run('PRAGMA foreign_keys = ON');
+});
+
 // Helper functions for Promise-based SQL operations
 function run(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -135,6 +144,17 @@ async function initDb() {
     )
   `);
 
+  // Performance Indexes for ultra-fast queries
+  await run('CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to_id ON tasks(assigned_to_id)');
+  await run('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
+  await run('CREATE INDEX IF NOT EXISTS idx_tasks_direction ON tasks(direction)');
+  await run('CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)');
+  await run('CREATE INDEX IF NOT EXISTS idx_task_comments_task_id ON task_comments(task_id)');
+  await run('CREATE INDEX IF NOT EXISTS idx_work_materials_direction ON work_materials(direction)');
+  await run('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
+  await run('CREATE INDEX IF NOT EXISTS idx_users_is_approved ON users(is_approved)');
+  await run('CREATE INDEX IF NOT EXISTS idx_users_access_level ON users(access_level)');
+
   await ensureRootAdmin();
 }
 
@@ -178,22 +198,23 @@ async function ensureRootAdmin() {
   return rootAdmin;
 }
 
+let onUserStatsUpdated = null;
+function setUserCacheInvalidator(fn) {
+  onUserStatsUpdated = fn;
+}
+
 async function recalculateUserStats(userId) {
   if (!userId) return;
-  const doneTasks = await all(
-    'SELECT score FROM tasks WHERE assigned_to_id = ? AND status = "done" AND score IS NOT NULL',
-    [userId]
-  );
-  const completedTasks = doneTasks.length;
-  let averageScore = 0.0;
-  if (completedTasks > 0) {
-    const sum = doneTasks.reduce((acc, t) => acc + Number(t.score), 0);
-    averageScore = Math.round((sum / completedTasks) * 100) / 100;
-  }
   await run(
-    'UPDATE users SET completed_tasks = ?, average_score = ? WHERE id = ?',
-    [completedTasks, averageScore, userId]
+    `UPDATE users SET
+       completed_tasks = (SELECT COUNT(*) FROM tasks WHERE assigned_to_id = ? AND status = 'done'),
+       average_score = COALESCE((SELECT ROUND(AVG(score), 1) FROM tasks WHERE assigned_to_id = ? AND status = 'done' AND score IS NOT NULL), 0.0)
+     WHERE id = ?`,
+    [userId, userId, userId]
   );
+  if (typeof onUserStatsUpdated === 'function') {
+    onUserStatsUpdated(userId);
+  }
 }
 
 module.exports = {
@@ -204,6 +225,7 @@ module.exports = {
   initDb,
   ensureRootAdmin,
   recalculateUserStats,
+  setUserCacheInvalidator,
   hashPassword,
   verifyPassword,
   ROOT_ADMIN_USERNAME,

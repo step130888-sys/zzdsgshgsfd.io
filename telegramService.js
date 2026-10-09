@@ -506,6 +506,26 @@ async function notifyTaskRework(task, reviewer, notes = null) {
   return await sendTelegramMessage(assignee.telegram_id, card);
 }
 
+async function notifyTaskForceAssigned(task, assignee, assigner, note = null) {
+  if (!assignee || !assignee.telegram_id) return false;
+
+  const deadlineStr = task.deadline ? task.deadline.replace('T', ' ') : 'Не установлен';
+  const noteText = note && note.trim() ? `\n💬 <b>Указание руководителя:</b>\n<i>${note.trim()}</i>\n` : '';
+
+  const card = (
+    '⚡ <b>ВАМ ПРИНУДИТЕЛЬНО ВЫДАНА ЗАДАЧА!</b>\n\n' +
+    `📌 <b>Задача:</b> #${task.id} — <b>${task.title}</b>\n` +
+    `📂 <b>Цех:</b> <code>${task.direction}</code>\n` +
+    `👤 <b>Назначил:</b> <b>${assigner ? assigner.name : 'Руководство'}</b> (${assigner ? assigner.role : 'Руководство'})\n` +
+    `⏰ <b>Дедлайн:</b> <code>${deadlineStr}</code>\n` +
+    `📝 <b>Техническое задание:</b>\n${task.description}\n` +
+    noteText + '\n' +
+    `🌐 <a href="http://localhost:8000/task/${task.id}">Открыть задачу на платформе</a>`
+  );
+
+  return await sendTelegramMessage(assignee.telegram_id, card);
+}
+
 async function notifyTaskComment(task, author, commentText) {
   let sentCount = 0;
   const messageCard = (
@@ -1420,6 +1440,7 @@ module.exports = {
   notifyNewUserRegistered,
   notifyTaskGraded,
   notifyTaskRework,
+  notifyTaskForceAssigned,
   notifyTaskComment,
   sendTestNotification,
   testTelegramConnection,

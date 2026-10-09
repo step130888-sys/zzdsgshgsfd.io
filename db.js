@@ -83,6 +83,12 @@ async function initDb() {
     // Column already exists
   }
 
+  try {
+    await run('ALTER TABLE users ADD COLUMN last_seen_at VARCHAR(50)');
+  } catch (e) {
+    // Column already exists
+  }
+
   await run(`
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

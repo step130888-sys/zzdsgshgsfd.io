@@ -1,8 +1,12 @@
 {% extends "base.html" %}
 
 {% block title %}Управление профилями (Ур. 4) | ОСО СГТУ • Медиацентр{% endblock %}
+{% block header_container_class %}max-w-[1600px]{% endblock %}
+{% block main_container_class %}max-w-[1600px]{% endblock %}
+{% block footer_container_class %}max-w-[1600px]{% endblock %}
 
 {% block content %}
+
 <div class="space-y-8">
     <!-- Header Hero Banner: Dark Cosmic Cyber Glass Aesthetic -->
     <div class="relative cyber-glass rounded-3xl border border-violet-500/20 p-6 md:p-8 shadow-2xl overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-[#0B0F24]/80">
@@ -77,10 +81,11 @@
                             <option value="2">Уровень 2 (Глава цеха)</option>
                             <option value="3">Уровень 3 (Руководство)</option>
                         </select>
-                        <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#060814] border border-violet-500/30 rounded-xl text-xs text-slate-300 font-bold cursor-pointer hover:border-cyan-400 transition-colors" title="Разрешить создание задач в контент-плане">
+                        <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#060814] border border-violet-500/30 rounded-xl text-xs text-slate-300 font-bold cursor-pointer hover:border-cyan-400 transition-colors" title="Разрешить создание задач в Контент плане">
                             <input type="checkbox" name="can_create_tasks" value="1" class="rounded bg-[#0B0F24] border-violet-500/40 text-cyan-400 focus:ring-0">
-                            <span>КП Задачи</span>
+                            <span>Контент план</span>
                         </label>
+
                         <button type="submit" class="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-300 font-black text-xs px-4 py-2 rounded-xl shadow-md transition-all hover:scale-105">
                             ✓ Одобрить
                         </button>
@@ -188,34 +193,34 @@
         </div>
 
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse min-w-[750px]">
+            <table class="w-full text-left border-collapse min-w-full">
                 <thead>
                     <tr class="bg-[#060814]/90 border-b border-violet-500/20 text-[11px] font-black uppercase tracking-wider text-violet-300 select-none">
-                        <th onclick="toggleSortHeaderAdmin('name')" class="py-3 px-6 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по имени">
+                        <th onclick="toggleSortHeaderAdmin('name')" class="py-2.5 md:py-3 px-3 md:px-4 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по имени">
                             <span>ID & ФИО</span>
                             <span id="admin-sort-icon-name" class="ml-1 text-[10px]">↕️</span>
                         </th>
-                        <th class="py-3 px-6">Логин</th>
-                        <th onclick="toggleSortHeaderAdmin('direction')" class="py-3 px-6 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по цеху">
+                        <th class="py-2.5 md:py-3 px-2 md:px-3">Логин</th>
+                        <th onclick="toggleSortHeaderAdmin('direction')" class="py-2.5 md:py-3 px-2 md:px-3 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по цеху">
                             <span>Направление</span>
                             <span id="admin-sort-icon-direction" class="ml-1 text-[10px]">↕️</span>
                         </th>
-                        <th onclick="toggleSortHeaderAdmin('level')" class="py-3 px-6 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по уровню">
+                        <th onclick="toggleSortHeaderAdmin('level')" class="py-2.5 md:py-3 px-2 md:px-3 cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по уровню">
                             <span>Уровень</span>
                             <span id="admin-sort-icon-level" class="ml-1 text-[10px]">↕️</span>
                         </th>
-                        <th class="py-3 px-6 text-center" title="Право на создание задач в контент-плане">
-                            <span>КП Задачи</span>
+                        <th class="py-2.5 md:py-3 px-2 md:px-3 text-center whitespace-nowrap" title="Право на создание задач в Контент плане">
+                            <span>Контент план</span>
                         </th>
-                        <th onclick="toggleSortHeaderAdmin('completed')" class="py-3 px-6 text-center cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по задачам">
+                        <th onclick="toggleSortHeaderAdmin('completed')" class="py-2.5 md:py-3 px-2 md:px-3 text-center cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по задачам">
                             <span>Выполнено</span>
                             <span id="admin-sort-icon-completed" class="ml-1 text-[10px]">↕️</span>
                         </th>
-                        <th onclick="toggleSortHeaderAdmin('score')" class="py-3 px-6 text-center cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по рейтингу">
+                        <th onclick="toggleSortHeaderAdmin('score')" class="py-2.5 md:py-3 px-2 md:px-3 text-center cursor-pointer hover:text-cyan-300 transition-colors" title="Сортировать по рейтингу">
                             <span>Рейтинг</span>
                             <span id="admin-sort-icon-score" class="ml-1 text-[10px]">↕️</span>
                         </th>
-                        <th class="py-3 px-6 text-right">Управление</th>
+                        <th class="py-2.5 md:py-3 px-3 md:px-4 text-right">Управление</th>
                     </tr>
                 </thead>
                 <tbody id="adminUsersTbody" class="divide-y divide-violet-500/10 text-xs">
@@ -232,28 +237,34 @@
                         onclick="toggleInlineEdit('{{ u.id }}')"
                         class="user-view-row hover:bg-violet-950/30 transition-all cursor-pointer group select-none"
                         title="Нажмите, чтобы открыть или закрыть панель редактирования">
-                        <td class="py-3.5 px-6 font-semibold text-white">
-                            <div class="flex items-center space-x-3">
-                                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 to-cyan-500 overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-xs text-white border border-violet-400/40 shadow-sm">
+                        <td class="py-2.5 md:py-3 px-3 md:px-4 font-semibold text-white">
+                            <div class="flex items-center space-x-2.5">
+                                <div class="relative w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 to-cyan-500 overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-xs text-white border border-violet-400/40 shadow-sm">
                                     {% if u.avatar_url %}
                                     <img src="{{ u.avatar_url }}" alt="{{ u.name }}" class="w-full h-full object-cover">
                                     {% else %}
                                     <span>{{ u.name[0] }}</span>
                                     {% endif %}
+                                    {% if online_user_ids and u.id in online_user_ids %}
+                                    <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#060814] rounded-full shadow-[0_0_8px_#34d399] animate-pulse" title="Сейчас в сети"></span>
+                                    {% endif %}
                                 </div>
-                                <div>
+                                <div class="truncate">
                                     <span class="text-slate-500 font-mono text-[11px] font-bold">#{{ u.id }}</span>
                                     <a href="/profile/{{ u.id }}" onclick="event.stopPropagation()" class="hover:text-cyan-300 font-black ml-1 transition-colors" title="Открыть профиль">{{ u.name }}</a>
+                                    {% if online_user_ids and u.id in online_user_ids %}
+                                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 ml-1 shadow-[0_0_6px_#34d399]" title="В сети"></span>
+                                    {% endif %}
                                     <span class="text-[10px] text-cyan-300 font-bold ml-1 opacity-0 group-hover:opacity-100 transition-opacity">✎</span>
                                 </div>
                             </div>
                         </td>
 
-                        <td class="py-3.5 px-6 font-mono font-bold text-slate-300">
+                        <td class="py-2.5 md:py-3 px-2 md:px-3 font-mono font-bold text-slate-300">
                             {{ u.username or '—' }}
                         </td>
 
-                        <td class="py-3.5 px-6">
+                        <td class="py-2.5 md:py-3 px-2 md:px-3">
                             <span class="px-2.5 py-0.5 rounded-full text-xs font-black border
                                 {% if u.role == 'Админ' %}bg-rose-500/15 text-rose-300 border-rose-500/30
                                 {% elif u.role == 'Руководство' %}bg-purple-500/15 text-purple-300 border-purple-500/30
@@ -267,19 +278,19 @@
                             </span>
                         </td>
 
-                        <td class="py-3.5 px-6">
+                        <td class="py-2.5 md:py-3 px-2 md:px-3">
                             <span class="font-black text-slate-300">Ур. {{ u.access_level }}</span>
                         </td>
 
-                        <!-- Колонка: Доступ к созданию задач в КП -->
-                        <td class="py-3.5 px-6 text-center whitespace-nowrap" onclick="event.stopPropagation()">
+                        <!-- Колонка: Доступ к созданию задач в Контент плане -->
+                        <td class="py-2.5 md:py-3 px-2 md:px-3 text-center whitespace-nowrap" onclick="event.stopPropagation()">
                             {% if u.access_level >= 2 %}
                             <span class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20" title="Доступно по умолчанию для уровней 2-4">
                                 <span>✓</span><span>Ур. {{ u.access_level }}+</span>
                             </span>
                             {% else %}
                             <form action="/admin/users/{{ u.id }}/toggle-task-creation" method="POST" class="inline-block">
-                                <button type="submit" title="Нажмите, чтобы переключить право создавать задачи в контент-плане" class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl text-xs font-black transition-all shadow-sm {% if u.can_create_tasks %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 hover:scale-105 shadow-[0_0_10px_rgba(16,185,129,0.2)]{% else %}bg-slate-800/80 text-slate-400 border border-slate-700 hover:text-slate-200 hover:bg-slate-700/80{% endif %}">
+                                <button type="submit" title="Нажмите, чтобы переключить право создавать задачи в Контент плане" class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-xl text-xs font-black transition-all shadow-sm {% if u.can_create_tasks %}bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 hover:scale-105 shadow-[0_0_10px_rgba(16,185,129,0.2)]{% else %}bg-slate-800/80 text-slate-400 border border-slate-700 hover:text-slate-200 hover:bg-slate-700/80{% endif %}">
                                     {% if u.can_create_tasks %}
                                     <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#10b981] animate-pulse"></span>
                                     <span>Вкл ✅</span>
@@ -292,11 +303,11 @@
                             {% endif %}
                         </td>
 
-                        <td class="py-3.5 px-6 text-center font-black text-white">
+                        <td class="py-2.5 md:py-3 px-2 md:px-3 text-center font-black text-white">
                             {{ u.completed_tasks }}
                         </td>
 
-                        <td class="py-3.5 px-6 text-center font-black">
+                        <td class="py-2.5 md:py-3 px-2 md:px-3 text-center font-black">
                             {% if u.completed_tasks > 0 %}
                             <span class="{% if u.average_score >= 8.5 %}text-emerald-400{% elif u.average_score >= 6.0 %}text-cyan-300{% else %}text-amber-400{% endif %}">
                                 {{ "%.1f"|format(u.average_score) }}
@@ -306,7 +317,7 @@
                             {% endif %}
                         </td>
 
-                        <td class="py-3.5 px-6 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                        <td class="py-2.5 md:py-3 px-3 md:px-4 text-right whitespace-nowrap" onclick="event.stopPropagation()">
                             <a href="/profile/{{ u.id }}" class="text-violet-300 hover:text-white bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 px-2.5 py-1 rounded-xl text-xs font-black transition-all mr-1.5 inline-block" title="Открыть профиль и фото">
                                 📷 Профиль
                             </a>
@@ -330,99 +341,95 @@
                         </td>
                     </tr>
 
-                    <!-- Строка инлайн-редактирования -->
+                    <!-- Строка инлайн-редактирования: компактная адаптивная сетка -->
                     <tr id="row-edit-{{ u.id }}" data-edit-id="{{ u.id }}" class="user-edit-row hidden bg-[#060814]/95 border-y-2 border-violet-500/40">
-                        <td colspan="8" class="p-5">
-                            <form action="/admin/users/{{ u.id }}/inline-edit" method="POST" enctype="multipart/form-data" class="flex flex-wrap items-end gap-3.5" onclick="event.stopPropagation()">
-                                <input type="hidden" name="redirect_to" value="/admin/users">
+                        <td colspan="8" class="p-3 md:p-4">
+                            <div class="bg-[#0B0F24]/90 rounded-2xl p-4 border border-violet-500/30 shadow-inner">
+                                <form action="/admin/users/{{ u.id }}/inline-edit" method="POST" enctype="multipart/form-data" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3 items-end" onclick="event.stopPropagation()">
+                                    <input type="hidden" name="redirect_to" value="/admin/users">
 
-                                <!-- Имя и Фамилия -->
-                                <div class="flex-grow min-w-[180px]">
-                                    <label class="block text-[11px] font-black uppercase text-violet-300 mb-1">Имя и Фамилия *</label>
-                                    <input type="text" name="name" value="{{ u.name }}" required
-                                           class="w-full text-xs font-bold px-3 py-2 bg-[#0B0F24] border border-violet-500/30 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 shadow-sm">
-                                </div>
+                                    <!-- 1. Имя и Фамилия -->
+                                    <div class="xl:col-span-1">
+                                        <label class="block text-[10px] font-black uppercase text-violet-300 mb-1">ФИО *</label>
+                                        <input type="text" name="name" value="{{ u.name }}" required
+                                               class="w-full text-xs font-bold px-3 py-2 bg-[#060814] border border-violet-500/30 rounded-xl text-white focus:border-cyan-400 focus:outline-none shadow-sm">
+                                    </div>
 
-                                <!-- Логин (только инфо) -->
-                                <div class="w-28">
-                                    <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Логин</label>
-                                    <input type="text" value="{{ u.username or 'user_' ~ u.id }}" disabled
-                                           class="w-full text-xs font-mono font-bold px-3 py-2 bg-[#0B0F24]/60 border border-violet-500/20 rounded-xl text-slate-500">
-                                </div>
+                                    <!-- 2. Новый пароль -->
+                                    <div class="xl:col-span-1">
+                                        <label class="block text-[10px] font-black uppercase text-violet-300 mb-1">Новый пароль</label>
+                                        <input type="password" name="password" placeholder="Оставьте пустым..."
+                                               class="w-full text-xs px-3 py-2 bg-[#060814] border border-violet-500/30 rounded-xl text-white focus:border-cyan-400 focus:outline-none shadow-sm placeholder:text-slate-500">
+                                    </div>
 
-                                <!-- Новый пароль -->
-                                <div class="w-36">
-                                    <label class="block text-[11px] font-black uppercase text-violet-300 mb-1">Новый пароль</label>
-                                    <input type="password" name="password" placeholder="Оставьте пустым..."
-                                           class="w-full text-xs px-3 py-2 bg-[#0B0F24] border border-violet-500/30 rounded-xl text-white focus:ring-2 focus:ring-cyan-500 shadow-sm">
-                                </div>
+                                    <!-- 3. Цех / Направление -->
+                                    <div class="xl:col-span-1">
+                                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Цех</label>
+                                        <select name="role" class="w-full text-xs font-bold px-3 py-2 bg-[#060814] border border-violet-500/30 text-white rounded-xl focus:border-cyan-400 focus:outline-none">
+                                            <option value="Фото" {% if u.role == 'Фото' %}selected{% endif %}>Фото</option>
+                                            <option value="Дизайн" {% if u.role == 'Дизайн' %}selected{% endif %}>Дизайн</option>
+                                            <option value="Видео" {% if u.role == 'Видео' %}selected{% endif %}>Видео</option>
+                                            <option value="Моушен" {% if u.role == 'Моушен' %}selected{% endif %}>Моушен</option>
+                                            <option value="СММ" {% if u.role == 'СММ' %}selected{% endif %}>СММ</option>
+                                            <option value="Руководство" {% if u.role == 'Руководство' %}selected{% endif %}>Руководство</option>
+                                            <option value="Админ" {% if u.role == 'Админ' %}selected{% endif %}>Админ</option>
+                                        </select>
+                                    </div>
 
-                                <!-- Цех / Направление -->
-                                <div class="w-32">
-                                    <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Цех</label>
-                                    <select name="role" class="w-full text-xs font-bold px-3 py-2 bg-[#0B0F24] border border-violet-500/30 text-white rounded-xl focus:ring-2 focus:ring-cyan-500">
-                                        <option value="Фото" {% if u.role == 'Фото' %}selected{% endif %}>Фото</option>
-                                        <option value="Дизайн" {% if u.role == 'Дизайн' %}selected{% endif %}>Дизайн</option>
-                                        <option value="Видео" {% if u.role == 'Видео' %}selected{% endif %}>Видео</option>
-                                        <option value="Моушен" {% if u.role == 'Моушен' %}selected{% endif %}>Моушен</option>
-                                        <option value="СММ" {% if u.role == 'СММ' %}selected{% endif %}>СММ</option>
-                                        <option value="Руководство" {% if u.role == 'Руководство' %}selected{% endif %}>Руководство</option>
-                                        <option value="Админ" {% if u.role == 'Админ' %}selected{% endif %}>Админ</option>
-                                    </select>
-                                </div>
-
-                                <!-- Уровень доступа -->
-                                <div class="w-24">
-                                    <label class="block text-[11px] font-black uppercase text-slate-400 mb-1">Уровень</label>
-                                    {% if u.username == 'stepyn' %}
-                                    <input type="text" value="Ур. 4 (Root)" disabled class="w-full text-xs font-bold px-2 py-2 bg-[#0B0F24]/60 border border-violet-500/20 rounded-xl text-slate-500">
-                                    <input type="hidden" name="access_level" value="4">
-                                    {% else %}
-                                    <select name="access_level" class="w-full text-xs font-bold px-3 py-2 bg-[#0B0F24] border border-violet-500/30 text-white rounded-xl focus:ring-2 focus:ring-cyan-500">
-                                        <option value="1" {% if u.access_level == 1 %}selected{% endif %}>Ур. 1</option>
-                                        <option value="2" {% if u.access_level == 2 %}selected{% endif %}>Ур. 2</option>
-                                        <option value="3" {% if u.access_level == 3 %}selected{% endif %}>Ур. 3</option>
-                                        <option value="4" {% if u.access_level == 4 %}selected{% endif %}>Ур. 4</option>
-                                    </select>
-                                    {% endif %}
-                                </div>
-
-                                <!-- Создание задач в КП (для 1 уровня) -->
-                                <div class="min-w-[175px]">
-                                    <label class="block text-[11px] font-black uppercase text-violet-300 mb-1">Создание задач в КП</label>
-                                    <label class="flex items-center space-x-2 px-3 py-2 bg-[#0B0F24] border border-violet-500/30 rounded-xl cursor-pointer hover:border-cyan-400 transition-colors">
-                                        <input type="checkbox" name="can_create_tasks" value="1" {% if u.can_create_tasks %}checked{% endif %} class="w-4 h-4 rounded bg-[#060814] border-violet-500/40 text-cyan-400 focus:ring-0 cursor-pointer">
-                                        <span class="text-xs font-bold text-slate-200 select-none">Разрешить (Ур. 1)</span>
-                                    </label>
-                                </div>
-
-                                <!-- Фото профиля (Загрузка файла) -->
-                                <div class="w-48">
-                                    <label class="block text-[11px] font-black uppercase text-amber-300 mb-1 flex items-center justify-between">
-                                        <span>⚡ Фото (файл)</span>
-                                        {% if u.avatar_url %}
-                                        <label class="text-[9px] text-rose-400 font-bold cursor-pointer">
-                                            <input type="checkbox" name="remove_avatar" value="1"> Удалить
-                                        </label>
+                                    <!-- 4. Уровень доступа -->
+                                    <div class="xl:col-span-1">
+                                        <label class="block text-[10px] font-black uppercase text-slate-400 mb-1">Уровень</label>
+                                        {% if u.username == 'stepyn' %}
+                                        <input type="text" value="Ур. 4 (Root)" disabled class="w-full text-xs font-bold px-2 py-2 bg-[#060814]/60 border border-violet-500/20 rounded-xl text-slate-500">
+                                        <input type="hidden" name="access_level" value="4">
+                                        {% else %}
+                                        <select name="access_level" class="w-full text-xs font-bold px-3 py-2 bg-[#060814] border border-violet-500/30 text-white rounded-xl focus:border-cyan-400 focus:outline-none">
+                                            <option value="1" {% if u.access_level == 1 %}selected{% endif %}>Ур. 1</option>
+                                            <option value="2" {% if u.access_level == 2 %}selected{% endif %}>Ур. 2</option>
+                                            <option value="3" {% if u.access_level == 3 %}selected{% endif %}>Ур. 3</option>
+                                            <option value="4" {% if u.access_level == 4 %}selected{% endif %}>Ур. 4</option>
+                                        </select>
                                         {% endif %}
-                                    </label>
-                                    <input type="file" name="avatar_file" accept="image/*"
-                                           class="w-full text-[11px] px-2 py-1.5 bg-[#0B0F24] border border-violet-500/30 rounded-xl text-slate-300 file:mr-1 file:py-0.5 file:px-2 file:rounded-lg file:border-0 file:text-[9px] file:font-black file:bg-violet-600 file:text-white cursor-pointer">
-                                </div>
+                                    </div>
 
-                                <!-- Кнопки сохранения и отмены -->
-                                <div class="flex items-center space-x-2">
-                                    <button type="submit" class="btn-neon font-black text-xs px-4 py-2 rounded-xl shadow-md transition-all">
-                                        💾 Сохранить
-                                    </button>
-                                    <button type="button" onclick="toggleInlineEdit('{{ u.id }}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs px-3.5 py-2 rounded-xl transition-colors">
-                                        ✕ Отмена
-                                    </button>
-                                </div>
-                            </form>
+                                    <!-- 5. Контент план (для 1 уровня) -->
+                                    <div class="xl:col-span-1">
+                                        <label class="block text-[10px] font-black uppercase text-violet-300 mb-1 truncate" title="Контент план: создание задач">Контент план</label>
+                                        <label class="flex items-center space-x-2 px-3 py-2 bg-[#060814] border border-violet-500/30 rounded-xl cursor-pointer hover:border-cyan-400 transition-colors">
+                                            <input type="checkbox" name="can_create_tasks" value="1" {% if u.can_create_tasks %}checked{% endif %} class="w-4 h-4 rounded bg-[#0B0F24] border-violet-500/40 text-cyan-400 focus:ring-0 cursor-pointer">
+                                            <span class="text-xs font-bold text-slate-200 select-none truncate">Создание задач</span>
+                                        </label>
+                                    </div>
+
+                                    <!-- 6. Фото профиля (файл) -->
+                                    <div class="xl:col-span-1">
+                                        <label class="block text-[10px] font-black uppercase text-amber-300 mb-1 flex items-center justify-between">
+                                            <span>⚡ Фото</span>
+                                            {% if u.avatar_url %}
+                                            <label class="text-[9px] text-rose-400 font-bold cursor-pointer">
+                                                <input type="checkbox" name="remove_avatar" value="1"> Удалить
+                                            </label>
+                                            {% endif %}
+                                        </label>
+                                        <input type="file" name="avatar_file" accept="image/*"
+                                               class="w-full text-[10px] px-2 py-1.5 bg-[#060814] border border-violet-500/30 rounded-xl text-slate-300 file:mr-1 file:py-0.5 file:px-1.5 file:rounded-lg file:border-0 file:text-[9px] file:font-black file:bg-violet-600 file:text-white cursor-pointer">
+                                    </div>
+
+                                    <!-- 7. Кнопки сохранения и отмены -->
+                                    <div class="xl:col-span-1 flex items-center space-x-2">
+                                        <button type="submit" class="flex-1 btn-neon font-black text-xs px-3 py-2 rounded-xl shadow-md transition-all text-center">
+                                            💾 Сохранить
+                                        </button>
+                                        <button type="button" onclick="toggleInlineEdit('{{ u.id }}')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs px-2.5 py-2 rounded-xl transition-colors">
+                                            ✕
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
+
 
                     <!-- Сообщение, если по фильтрам никто не найден -->
                     <tr id="admin-empty-state" class="hidden">

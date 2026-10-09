@@ -1,8 +1,12 @@
 const { get, run, ROOT_ADMIN_USERNAME } = require('./db');
+const onlineTracker = require('./onlineTracker');
 
 async function getCurrentUserMiddleware(req, res, next) {
   res.locals.current_user = null;
   req.user = null;
+  res.locals.online_users = onlineTracker.getOnlineUsers();
+  res.locals.online_user_ids = onlineTracker.getOnlineUserIds();
+  res.locals.online_users_count = res.locals.online_users.length;
 
   const userId = req.cookies.user_id;
   if (!userId) {
@@ -29,12 +33,20 @@ async function getCurrentUserMiddleware(req, res, next) {
 
     req.user = user;
     res.locals.current_user = user;
+    onlineTracker.touchUser(user);
+
+    // Update locals with current touched user included
+    res.locals.online_users = onlineTracker.getOnlineUsers();
+    res.locals.online_user_ids = onlineTracker.getOnlineUserIds();
+    res.locals.online_users_count = res.locals.online_users.length;
+
     next();
   } catch (err) {
     console.error('Error in getCurrentUserMiddleware:', err);
     next();
   }
 }
+
 
 function requireAuth(req, res, next) {
   if (!req.user) {

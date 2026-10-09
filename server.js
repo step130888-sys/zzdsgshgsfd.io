@@ -10,6 +10,7 @@ const { getCurrentUserMiddleware, requireAuth, requireLevel } = require('./auth'
 const gdriveService = require('./gdriveService');
 const telegramService = require('./telegramService');
 const vkService = require('./vkService');
+const onlineTracker = require('./onlineTracker');
 
 // Polyfills for Jinja2 template compatibility
 if (!String.prototype.startswith) {
@@ -123,6 +124,14 @@ nunjucksEnv.addFilter('selectattr', function (arr, attr, test, val) {
   return arr.filter(item => item && item[attr]);
 });
 
+nunjucksEnv.addFilter('formatLastSeen', function (val) {
+  return onlineTracker.formatLastSeen(val);
+});
+
+nunjucksEnv.addFilter('isOnline', function (userId) {
+  return onlineTracker.isUserOnline(userId);
+});
+
 // Middleware
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.json({ limit: '50mb' }));
@@ -141,6 +150,33 @@ app.use((req, res, next) => {
   res.locals.msg = req.query.msg || null;
   next();
 });
+
+// -------------------------------------------------------------
+// Live Online Tracking API Endpoints
+// -------------------------------------------------------------
+
+app.get('/api/online-users', (req, res) => {
+  if (req.user) {
+    onlineTracker.touchUser(req.user);
+  }
+  const users = onlineTracker.getOnlineUsers();
+  res.json({
+    count: users.length,
+    users
+  });
+});
+
+app.post('/api/heartbeat', (req, res) => {
+  if (req.user) {
+    onlineTracker.touchUser(req.user);
+  }
+  const users = onlineTracker.getOnlineUsers();
+  res.json({
+    ok: true,
+    count: users.length
+  });
+});
+
 
 // -------------------------------------------------------------
 // Public Student Council Portal (ОСО СГТУ)
@@ -420,17 +456,89 @@ app.get('/profile/:id', requireAuth, async (req, res) => {
   const inProgressCount = userTasks.filter(t => t.status === 'in_progress').length;
   const reviewCount = userTasks.filter(t => t.status === 'review').length;
 
+  let openTasksQuery = 'SELECT * FROM tasks WHERE status = "open"';
+  const openTasksParams = [];
+  if (req.user.access_level <= 2) {
+    openTasksQuery += ' AND direction = ?';
+    openTasksParams.push(profileUser.role);
+  }
+  openTasksQuery += ` ORDER BY 
+    CASE WHEN deadline IS NOT NULL AND TRIM(deadline) != '' THEN 0 ELSE 1 END ASC,
+    deadline ASC, id DESC`;
+  const openTasks = await db.all(openTasksQuery, openTasksParams);
+
   res.render('profile.html', {
     profile_user: profileUser,
     current_user: req.user,
     user_tasks: userTasks,
+    open_tasks: openTasks,
     in_progress_count: inProgressCount,
     review_count: reviewCount,
+    is_online: onlineTracker.isUserOnline(profileUser.id),
+    last_seen_formatted: onlineTracker.formatLastSeen(profileUser.last_seen_at),
     vk_config: vkService.getConfig(),
     gdrive_folder_url: gdriveService.getTargetFolderUrl(),
     error: req.query.error,
     msg: req.query.msg
   });
+
+});
+
+app.post('/profile/:id/assign-task', requireAuth, async (req, res) => {
+  const targetUserId = parseInt(req.params.id, 10);
+  const targetUser = await db.get('SELECT * FROM users WHERE id = ?', [targetUserId]);
+  if (!targetUser) {
+    const err = encodeURIComponent('Пользователь не найден.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  if (req.user.access_level < 2 && !req.user.can_create_tasks) {
+    const err = encodeURIComponent('Недостаточно прав. Принудительно выдавать задачи могут руководители, главы цехов или уполномоченные участники.');
+    return res.redirect(`/profile/${targetUserId}?error=${err}`);
+  }
+
+  if (req.user.access_level <= 2 && targetUser.role !== req.user.role) {
+    const err = encodeURIComponent(`Вы можете выдавать задачи только участникам своего направления (${req.user.role}).`);
+    return res.redirect(`/profile/${targetUserId}?error=${err}`);
+  }
+
+  const taskId = parseInt(req.body.task_id, 10);
+  const comment = (req.body.comment || '').trim();
+
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`/profile/${targetUserId}?error=${err}`);
+  }
+
+  const oldAssigneeId = task.assigned_to_id;
+  await db.run('UPDATE tasks SET assigned_to_id = ?, status = "in_progress" WHERE id = ?', [targetUserId, taskId]);
+  task.assigned_to_id = targetUserId;
+  task.status = 'in_progress';
+
+  if (oldAssigneeId && oldAssigneeId !== targetUserId) {
+    await db.recalculateUserStats(oldAssigneeId);
+  }
+  await db.recalculateUserStats(targetUserId);
+
+  const nowIso = new Date().toISOString();
+  let chatText = `⚡ Руководитель ${req.user.name} (${req.user.role}) принудительно выдал задачу сотруднику ${targetUser.name}.`;
+  if (comment) chatText += `\n\n📌 Указание руководителя: ${comment}`;
+  await db.run(
+    'INSERT INTO task_comments (task_id, user_id, message, created_at) VALUES (?, ?, ?, ?)',
+    [taskId, req.user.id, chatText, nowIso]
+  );
+
+  try {
+    await vkService.notifyTaskForceAssigned(task, targetUser, req.user, comment);
+  } catch (e) {}
+
+  try {
+    await telegramService.notifyTaskForceAssigned(task, targetUser, req.user, comment);
+  } catch (e) {}
+
+  const msg = encodeURIComponent(`Задача #${task.id} «${task.title}» успешно принудительно выдана сотруднику ${targetUser.name}!`);
+  res.redirect(`/profile/${targetUserId}?msg=${msg}`);
 });
 
 app.post('/profile/:id/avatar', requireAuth, upload.single('avatar_file'), async (req, res) => {
@@ -667,12 +775,21 @@ app.get('/content-plan', requireAuth, async (req, res) => {
     }
   }
 
-  let assignableUsers = [];
-  if (req.user.access_level === 2 || (req.user.access_level === 1 && req.user.can_create_tasks)) {
-    assignableUsers = await db.all('SELECT * FROM users WHERE role = ? AND is_approved = 1', [req.user.role]);
+async function getAssignableUsersFor(user) {
+  let list = [];
+  if (user.access_level === 2 || (user.access_level === 1 && user.can_create_tasks)) {
+    list = await db.all('SELECT * FROM users WHERE role = ? AND is_approved = 1 ORDER BY name ASC', [user.role]);
   } else {
-    assignableUsers = await db.all('SELECT * FROM users WHERE access_level <= 3 AND is_approved = 1');
+    list = await db.all('SELECT * FROM users WHERE is_approved = 1 ORDER BY role ASC, name ASC');
   }
+  for (const u of list) {
+    const activeRow = await db.get('SELECT COUNT(*) as c FROM tasks WHERE assigned_to_id = ? AND status IN ("in_progress", "rework")', [u.id]);
+    u.active_tasks_count = activeRow ? activeRow.c : 0;
+  }
+  return list;
+}
+
+  const assignableUsers = await getAssignableUsersFor(req.user);
 
   res.render('content_plan.html', {
     current_user: req.user,
@@ -788,10 +905,13 @@ app.get('/task/:id', requireAuth, async (req, res) => {
   }
   task.comments = rawComments;
 
+  const assignableUsers = await getAssignableUsersFor(req.user);
+
   res.render('task_detail.html', {
     current_user: req.user,
     task,
     comments: rawComments,
+    assignable_users: assignableUsers,
     gdrive_folder_url: gdriveService.getTargetFolderUrl(),
     error: req.query.error,
     msg: req.query.msg
@@ -917,6 +1037,107 @@ app.post('/task/:id/take', requireAuth, async (req, res) => {
 
   const msg = encodeURIComponent(`Вы успешно взяли задачу #${task.id} в работу! Ознакомьтесь с подробным описанием и задайте вопросы в чате.`);
   res.redirect(`/task/${task.id}?msg=${msg}`);
+});
+
+app.post(['/task/:id/assign', '/task/:id/force-assign'], requireAuth, async (req, res) => {
+  const taskId = parseInt(req.params.id, 10);
+  const target = req.body.redirect_to && req.body.redirect_to.trim() ? req.body.redirect_to.trim() : `/task/${taskId}`;
+  const rawAssigneeId = (req.body.assigned_to_id !== undefined && req.body.assigned_to_id !== null) ? String(req.body.assigned_to_id).trim() : '';
+  const comment = (req.body.comment || req.body.note || '').trim();
+
+  // 1. Permission check:
+  if (req.user.access_level < 2 && !req.user.can_create_tasks) {
+    const err = encodeURIComponent('Недостаточно прав. Принудительно назначать задачи могут руководители, главы цехов или уполномоченные участники.');
+    return res.redirect(`${target}?error=${err}`);
+  }
+
+  const task = await db.get('SELECT * FROM tasks WHERE id = ?', [taskId]);
+  if (!task) {
+    const err = encodeURIComponent('Задача не найдена.');
+    return res.redirect(`/content-plan?error=${err}`);
+  }
+
+  // Direction boundary check for level 1-2:
+  if (req.user.access_level <= 2 && task.direction !== req.user.role) {
+    const err = encodeURIComponent(`Вы можете управлять только задачами своего цеха (${req.user.role}).`);
+    return res.redirect(`${target}?error=${err}`);
+  }
+
+  const oldAssigneeId = task.assigned_to_id;
+
+  // Case A: Unassigning (making task open)
+  if (!rawAssigneeId) {
+    await db.run('UPDATE tasks SET assigned_to_id = NULL, status = "open" WHERE id = ?', [taskId]);
+    if (oldAssigneeId) {
+      await db.recalculateUserStats(oldAssigneeId);
+    }
+
+    const unassignMsg = `⚡ Руководитель ${req.user.name} (${req.user.role}) снял назначение исполнителя. Задача снова свободна (open).`;
+    const nowIso = new Date().toISOString();
+    await db.run(
+      'INSERT INTO task_comments (task_id, user_id, message, created_at) VALUES (?, ?, ?, ?)',
+      [taskId, req.user.id, unassignMsg, nowIso]
+    );
+
+    const msg = encodeURIComponent(`Назначение с задачи #${task.id} снято. Задача снова свободна в контент-плане.`);
+    return res.redirect(`${target}?msg=${msg}`);
+  }
+
+  // Case B: Force assigning to a specific employee
+  const newAssigneeId = parseInt(rawAssigneeId, 10);
+  const newAssignee = await db.get('SELECT * FROM users WHERE id = ?', [newAssigneeId]);
+  if (!newAssignee) {
+    const err = encodeURIComponent('Выбранный сотрудник не найден.');
+    return res.redirect(`${target}?error=${err}`);
+  }
+
+  if (!newAssignee.is_approved) {
+    const err = encodeURIComponent('Нельзя назначить задачу неактивированному сотруднику (ожидает модерации).');
+    return res.redirect(`${target}?error=${err}`);
+  }
+
+  if (req.user.access_level <= 2 && newAssignee.role !== req.user.role) {
+    const err = encodeURIComponent(`Глава цеха может назначать задачи только участникам своего направления (${req.user.role}).`);
+    return res.redirect(`${target}?error=${err}`);
+  }
+
+  const newStatus = (task.status === 'open') ? 'in_progress' : task.status;
+  await db.run(
+    'UPDATE tasks SET assigned_to_id = ?, status = ? WHERE id = ?',
+    [newAssigneeId, newStatus, taskId]
+  );
+  task.assigned_to_id = newAssigneeId;
+  task.status = newStatus;
+
+  if (oldAssigneeId && oldAssigneeId !== newAssigneeId) {
+    await db.recalculateUserStats(oldAssigneeId);
+  }
+  await db.recalculateUserStats(newAssigneeId);
+
+  const nowIso = new Date().toISOString();
+  let chatText = `⚡ Руководитель ${req.user.name} (${req.user.role}) принудительно выдал задачу сотруднику ${newAssignee.name} (@${newAssignee.username || 'user_' + newAssignee.id}).`;
+  if (comment) {
+    chatText += `\n\n📌 Указание руководителя: ${comment}`;
+  }
+  await db.run(
+    'INSERT INTO task_comments (task_id, user_id, message, created_at) VALUES (?, ?, ?, ?)',
+    [taskId, req.user.id, chatText, nowIso]
+  );
+
+  try {
+    await vkService.notifyTaskForceAssigned(task, newAssignee, req.user, comment);
+  } catch (e) {
+    console.error('VK force-assign notification error:', e);
+  }
+
+  try {
+    await telegramService.notifyTaskForceAssigned(task, newAssignee, req.user, comment);
+  } catch (e) {
+    console.error('Telegram force-assign notification error:', e);
+  }
+
+  const msg = encodeURIComponent(`Задача #${task.id} «${task.title}» успешно принудительно выдана сотруднику ${newAssignee.name}!`);
+  return res.redirect(`${target}?msg=${msg}`);
 });
 
 app.post('/task/:id/submit', requireAuth, upload.single('file_upload'), async (req, res) => {

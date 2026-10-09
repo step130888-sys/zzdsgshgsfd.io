@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1280, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}ОСО СГТУ • Медиацентр университета{% endblock %}</title>
     <link rel="icon" type="image/png" href="/uploads/oco_logo.png">
 
@@ -54,7 +54,8 @@
     </script>
     <style>
         body {
-            min-width: 1200px;
+            min-width: 100%;
+            overflow-x: hidden;
             font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: #060814;
             color: #F8FAFC;
@@ -140,7 +141,7 @@
 
     <!-- Top Navigation Bar: Dark Cosmic Glass Theme -->
     <header class="bg-[#070918]/85 backdrop-blur-xl border-b border-violet-500/20 text-white sticky top-0 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.6)]">
-        <div class="max-w-7xl mx-auto px-6 h-20 py-2 flex items-center justify-between">
+        <div class="{% block header_container_class %}max-w-7xl{% endblock %} mx-auto px-4 md:px-6 h-20 py-2 flex items-center justify-between">
             
             <!-- Logo & Brand Identity -->
             <div class="flex items-center space-x-7">
@@ -191,9 +192,80 @@
                 {% endif %}
             </div>
 
-            <!-- User Status & Actions -->
-            <div class="flex items-center space-x-4">
+            <!-- User Status, Online Indicator & Actions -->
+            <div class="flex items-center space-x-3 md:space-x-4">
                 {% if current_user %}
+                
+                <!-- Online Users Counter & Dropdown -->
+                <div class="relative" id="onlineWidgetWrapper">
+                    <button id="onlineUsersBtn" type="button" onclick="toggleOnlineUsersDropdown(event)"
+                            class="flex items-center space-x-2 px-3 py-1.5 rounded-full cyber-pill hover:bg-emerald-500/15 border border-emerald-500/40 hover:border-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.25)] transition-all cursor-pointer group"
+                            title="Нажмите, чтобы посмотреть, кто сейчас в сети">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+                        </span>
+                        <span class="text-xs font-black text-emerald-300 group-hover:text-emerald-200 flex items-center space-x-1">
+                            <span>В сети:</span>
+                            <span id="onlineCounterText">{{ online_users_count or 1 }}</span>
+                        </span>
+                        <span class="text-slate-400 text-[10px] group-hover:text-white transition-colors">▾</span>
+                    </button>
+
+                    <!-- Online Users Dropdown Menu -->
+                    <div id="onlineUsersDropdown" class="hidden absolute right-0 mt-2.5 w-80 max-w-[90vw] cyber-glass-glow rounded-2xl border border-violet-500/30 shadow-[0_15px_40px_rgba(0,0,0,0.85)] p-4 z-50 backdrop-blur-2xl bg-[#090C1C]/95">
+                        <div class="flex items-center justify-between pb-3 border-b border-violet-500/20 mb-3">
+                            <div class="flex items-center space-x-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse"></span>
+                                <span class="text-xs font-black uppercase text-white tracking-wider">Сейчас на платформе</span>
+                            </div>
+                            <span id="onlineCountPill" class="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                {{ online_users_count or 1 }} чел.
+                            </span>
+                        </div>
+
+                        <!-- Dynamic list of online users -->
+                        <div id="onlineUsersList" class="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            {% if online_users and online_users|length > 0 %}
+                                {% for ou in online_users %}
+                                <a href="/profile/{{ ou.id }}" class="flex items-center justify-between p-2 rounded-xl hover:bg-violet-950/40 border border-transparent hover:border-violet-500/20 transition-all group">
+                                    <div class="flex items-center space-x-2.5 min-w-0">
+                                        <div class="relative w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-xs text-white border border-violet-400/40">
+                                            {% if ou.avatar_url %}
+                                            <img src="{{ ou.avatar_url }}" alt="{{ ou.name }}" class="w-full h-full object-cover">
+                                            {% else %}
+                                            <span>{{ ou.name[0] }}</span>
+                                            {% endif %}
+                                            <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#090C1C] rounded-full shadow-[0_0_6px_#10b981]"></span>
+                                        </div>
+                                        <div class="truncate">
+                                            <div class="text-xs font-bold text-white group-hover:text-cyan-300 truncate transition-colors">{{ ou.name }}</div>
+                                            <div class="text-[10px] text-slate-400 truncate flex items-center space-x-1.5">
+                                                <span class="text-violet-300 font-semibold">{{ ou.role }}</span>
+                                                <span>•</span>
+                                                <span class="text-emerald-400 font-mono">{{ ou.relative_time or 'В сети' }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 flex-shrink-0">
+                                        Ур. {{ ou.access_level }}
+                                    </span>
+                                </a>
+                                {% endfor %}
+                            {% else %}
+                                <div class="text-center py-4 text-xs text-slate-400 font-medium">
+                                    Никого нет в сети
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mt-3 pt-2.5 border-t border-violet-500/20 flex items-center justify-between text-[10px] text-slate-400">
+                            <span>Обновление в реальном времени</span>
+                            <span class="text-cyan-400 font-bold">● Live</span>
+                        </div>
+                    </div>
+                </div>
+
                 <a href="/profile/{{ current_user.id }}" title="Перейти в мой профиль" class="flex items-center space-x-3 cyber-pill px-3.5 py-1.5 rounded-full border border-violet-500/30 hover:border-cyan-400/50 hover:bg-white/5 transition-all shadow-inner group">
                     <div class="text-right">
                         <div class="text-xs font-extrabold text-white group-hover:text-cyan-300 transition-colors leading-tight">{{ current_user.name }}</div>
@@ -203,12 +275,14 @@
                         </div>
                     </div>
                     {% if current_user.avatar_url %}
-                    <div class="w-8 h-8 rounded-full overflow-hidden border border-violet-400/60 shadow-md shadow-violet-900/50 flex-shrink-0 group-hover:border-cyan-400 transition-colors">
+                    <div class="relative w-8 h-8 rounded-full overflow-hidden border border-violet-400/60 shadow-md shadow-violet-900/50 flex-shrink-0 group-hover:border-cyan-400 transition-colors">
                         <img src="{{ current_user.avatar_url }}" alt="{{ current_user.name }}" class="w-full h-full object-cover">
+                        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#070918] rounded-full shadow-[0_0_6px_#10b981]" title="В сети"></span>
                     </div>
                     {% else %}
-                    <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 text-white flex items-center justify-center font-black text-xs shadow-md shadow-violet-900/50 flex-shrink-0 group-hover:scale-105 transition-transform">
+                    <div class="relative w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 text-white flex items-center justify-center font-black text-xs shadow-md shadow-violet-900/50 flex-shrink-0 group-hover:scale-105 transition-transform">
                         {{ current_user.name[0] }}
+                        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#070918] rounded-full shadow-[0_0_6px_#10b981]" title="В сети"></span>
                     </div>
                     {% endif %}
                 </a>
@@ -225,7 +299,7 @@
     </header>
 
     <!-- Global Alerts (if any) -->
-    <main class="flex-grow max-w-7xl mx-auto px-4 md:px-6 py-6 w-full">
+    <main class="flex-grow {% block main_container_class %}max-w-7xl{% endblock %} mx-auto px-4 md:px-6 py-6 w-full">
         {% block alerts %}
         {% if error %}
         <div class="mb-5 bg-rose-950/70 border border-rose-500/50 text-rose-200 text-xs font-bold px-4 py-3.5 rounded-2xl flex items-center justify-between shadow-lg shadow-rose-950/30 backdrop-blur-md">
@@ -250,7 +324,7 @@
 
     <!-- Modern Cosmic Footer -->
     <footer class="bg-[#050611] text-slate-400 py-6 mt-auto text-xs border-t border-violet-500/20">
-        <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center space-y-3 md:space-y-0">
+        <div class="{% block footer_container_class %}max-w-7xl{% endblock %} mx-auto px-4 md:px-6 flex flex-col md:flex-row justify-between items-center space-y-3 md:space-y-0">
             <div class="flex items-center space-x-3">
                 <div class="w-7 h-7 rounded-full p-[1px] bg-gradient-to-tr from-violet-500 to-cyan-400 shadow-[0_0_8px_rgba(139,92,246,0.3)] flex-shrink-0">
                     <div class="w-full h-full rounded-full overflow-hidden bg-black flex items-center justify-center p-0.5">
@@ -267,6 +341,75 @@
             </div>
         </div>
     </footer>
+
+    <!-- Global Scripts: Online dropdown & live heartbeat -->
+    <script>
+        function toggleOnlineUsersDropdown(e) {
+            if (e) e.stopPropagation();
+            const dd = document.getElementById('onlineUsersDropdown');
+            if (dd) dd.classList.toggle('hidden');
+        }
+
+        document.addEventListener('click', function(e) {
+            const dd = document.getElementById('onlineUsersDropdown');
+            const btn = document.getElementById('onlineUsersBtn');
+            if (dd && !dd.classList.contains('hidden')) {
+                if (!dd.contains(e.target) && (!btn || !btn.contains(e.target))) {
+                    dd.classList.add('hidden');
+                }
+            }
+        });
+
+        async function refreshOnlineList() {
+            try {
+                const res = await fetch('/api/online-users');
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const counterText = document.getElementById('onlineCounterText');
+                if (counterText) counterText.textContent = data.count || 0;
+                
+                const countPill = document.getElementById('onlineCountPill');
+                if (countPill) countPill.textContent = (data.count || 0) + ' чел.';
+
+                const listEl = document.getElementById('onlineUsersList');
+                if (listEl && Array.isArray(data.users)) {
+                    if (data.users.length === 0) {
+                        listEl.innerHTML = '<div class="text-center py-4 text-xs text-slate-400 font-medium">Никого нет в сети</div>';
+                    } else {
+                        listEl.innerHTML = data.users.map(u => `
+                            <a href="/profile/${u.id}" class="flex items-center justify-between p-2 rounded-xl hover:bg-violet-950/40 border border-transparent hover:border-violet-500/20 transition-all group">
+                                <div class="flex items-center space-x-2.5 min-w-0">
+                                    <div class="relative w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 overflow-hidden flex-shrink-0 flex items-center justify-center font-black text-xs text-white border border-violet-400/40">
+                                        ${u.avatar_url ? `<img src="${u.avatar_url}" alt="${u.name}" class="w-full h-full object-cover">` : `<span>${u.name ? u.name[0] : 'U'}</span>`}
+                                        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 border-2 border-[#090C1C] rounded-full shadow-[0_0_6px_#10b981]"></span>
+                                    </div>
+                                    <div class="truncate">
+                                        <div class="text-xs font-bold text-white group-hover:text-cyan-300 truncate transition-colors">${u.name}</div>
+                                        <div class="text-[10px] text-slate-400 truncate flex items-center space-x-1.5">
+                                            <span class="text-violet-300 font-semibold">${u.role}</span>
+                                            <span>•</span>
+                                            <span class="text-emerald-400 font-mono">${u.relative_time || 'В сети'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 flex-shrink-0">
+                                    Ур. ${u.access_level}
+                                </span>
+                            </a>
+                        `).join('');
+                    }
+                }
+            } catch (err) {
+                // Non-blocking
+            }
+        }
+
+        // Live polling every 30 seconds
+        if (document.getElementById('onlineWidgetWrapper')) {
+            setInterval(refreshOnlineList, 30000);
+        }
+    </script>
 
     {% block scripts %}{% endblock %}
 </body>

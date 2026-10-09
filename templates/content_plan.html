@@ -143,18 +143,45 @@
                         <td class="py-3.5 px-4 align-top whitespace-nowrap">
                             {% if task.assigned_to %}
                             <div class="flex items-center space-x-2.5">
-                                <div class="w-7 h-7 rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 text-white flex items-center justify-center text-[11px] font-black flex-shrink-0 shadow-sm">
-                                    {{ task.assigned_to.name[0] }}
+                                <div class="relative w-7 h-7 rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 text-white flex items-center justify-center text-[11px] font-black flex-shrink-0 shadow-sm">
+                                    {% if task.assigned_to.avatar_url %}
+                                    <img src="{{ task.assigned_to.avatar_url }}" alt="{{ task.assigned_to.name }}" class="w-full h-full object-cover rounded-full">
+                                    {% else %}
+                                    <span>{{ task.assigned_to.name[0] }}</span>
+                                    {% endif %}
+                                    {% if online_user_ids and task.assigned_to.id in online_user_ids %}
+                                    <span class="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-400 border-2 border-[#0B0F24] rounded-full shadow-[0_0_6px_#10b981]" title="В сети"></span>
+                                    {% endif %}
                                 </div>
                                 <div>
                                     <a href="/profile/{{ task.assigned_to.id }}" class="text-xs font-bold text-white hover:text-violet-300 hover:underline block leading-tight">
                                         {{ task.assigned_to.name }}
                                     </a>
-                                    <div class="text-[10px] text-slate-400 mt-0.5">{{ task.assigned_to.role }}</div>
+                                    <div class="text-[10px] text-slate-400 mt-0.5 flex items-center space-x-1.5">
+                                        <span>{{ task.assigned_to.role }}</span>
+                                        {% if current_user.access_level >= 2 or current_user.can_create_tasks %}
+                                        <button type="button"
+                                                onclick="openAssignModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}', '{{ task.direction }}', {{ task.assigned_to_id }})"
+                                                class="text-amber-400 hover:text-amber-300 font-bold hover:underline"
+                                                title="Принудительно сменить исполнителя">
+                                            • ⚡ Сменить
+                                        </button>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </div>
                             {% else %}
-                            <span class="text-xs text-slate-500 italic">Не назначен</span>
+                            <div class="space-y-1">
+                                <span class="text-xs text-slate-500 italic block">Не назначен</span>
+                                {% if current_user.access_level >= 2 or current_user.can_create_tasks %}
+                                <button type="button"
+                                        onclick="openAssignModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}', '{{ task.direction }}', null)"
+                                        class="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg text-[10px] font-black bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 hover:scale-105 transition-all shadow-[0_0_8px_rgba(245,158,11,0.2)]"
+                                        title="Принудительно выдать эту задачу сотруднику">
+                                    <span>⚡ Выдать</span>
+                                </button>
+                                {% endif %}
+                            </div>
                             {% endif %}
                         </td>
 
@@ -230,13 +257,22 @@
 
                         <!-- Actions -->
                         <td class="py-3.5 px-4 align-top text-right whitespace-nowrap">
-                            <!-- Open: Take task -->
+                            <!-- Open: Take task / Force assign -->
                             {% if task.status == 'open' %}
-                            <form action="/task/{{ task.id }}/take" method="POST" class="inline-block">
-                                <button type="submit" class="bg-violet-600/30 hover:bg-violet-600 text-violet-200 hover:text-white font-bold text-xs px-3 py-1.5 rounded-xl border border-violet-500/40 transition-all shadow-sm">
-                                    Взять задачу
+                            <div class="inline-flex items-center space-x-1.5">
+                                <form action="/task/{{ task.id }}/take" method="POST" class="inline-block">
+                                    <button type="submit" class="bg-violet-600/30 hover:bg-violet-600 text-violet-200 hover:text-white font-bold text-xs px-3 py-1.5 rounded-xl border border-violet-500/40 transition-all shadow-sm">
+                                        Взять себе
+                                    </button>
+                                </form>
+                                {% if current_user.access_level >= 2 or current_user.can_create_tasks %}
+                                <button type="button" onclick="openAssignModal({{ task.id }}, '{{ task.title|replace('\'', '\\\'') }}', '{{ task.direction }}', null)"
+                                        class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-black text-xs px-2.5 py-1.5 rounded-xl border border-amber-500/40 transition-all shadow-sm"
+                                        title="Принудительно выдать задачу сотруднику">
+                                    ⚡ Выдать
                                 </button>
-                            </form>
+                                {% endif %}
+                            </div>
 
                             <!-- In progress -->
                             {% elif task.status == 'in_progress' %}
@@ -567,6 +603,70 @@
     </div>
 </div>
 
+<!-- Modal: Force Assign Task to Employee -->
+{% if current_user.access_level >= 2 or current_user.can_create_tasks %}
+<div id="assignTaskModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass-glow rounded-3xl max-w-lg w-full p-6 md:p-7 shadow-2xl border border-amber-500/40 text-white space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-white/10">
+            <div class="flex items-center space-x-2.5">
+                <span class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center text-base font-black shadow-[0_0_10px_rgba(245,158,11,0.3)]">
+                    ⚡
+                </span>
+                <div>
+                    <h3 class="text-base font-black text-white uppercase tracking-tight">Принудительная выдача задачи</h3>
+                    <p class="text-[11px] text-slate-400 font-medium">Сотрудник получит мгновенное уведомление в Telegram и VK</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeAssignModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+        </div>
+
+        <form id="assignTaskForm" method="POST" action="" class="space-y-4">
+            <input type="hidden" name="redirect_to" value="/content-plan">
+
+            <div class="bg-[#060814]/90 p-3.5 rounded-2xl border border-violet-500/30 space-y-1">
+                <div class="text-[10px] uppercase font-black tracking-wider text-slate-400">Выбранная задача:</div>
+                <div id="assignTaskTitle" class="text-sm font-black text-white leading-snug"></div>
+                <div id="assignTaskDirectionBadge" class="text-xs text-cyan-300 font-bold"></div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1.5 flex items-center justify-between">
+                    <span>Сотрудник для назначения *</span>
+                    <span class="text-[10px] text-slate-400 font-normal">Показана текущая нагрузка</span>
+                </label>
+                <select name="assigned_to_id" id="assignUserSelect" class="w-full text-xs font-bold px-3.5 py-3 bg-[#080B1C] border border-violet-500/30 rounded-2xl text-white focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30">
+                    <option value="">-- Выберите сотрудника из списка --</option>
+                    <option value="" class="text-rose-400 font-bold">❌ Снять исполнителя (сделать задачу свободной)</option>
+                    {% for u in assignable_users %}
+                    <option value="{{ u.id }}">
+                        {{ u.name }} (Цех: {{ u.role }}, Ур. {{ u.access_level }}) • В работе: {{ u.active_tasks_count }} зад.
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1">
+                    Указание / Комментарий исполнителю (необязательно)
+                </label>
+                <textarea name="comment" rows="2" placeholder="Например: Срочно в номер, съемка сегодня в 15:00 в 1 корпусе..."
+                          class="w-full text-xs px-3.5 py-2.5 bg-[#080B1C] border border-violet-500/30 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30"></textarea>
+                <span class="text-[10px] text-slate-400 mt-1 block">Комментарий отобразится в чате задачи и придет в боты сотрудника.</span>
+            </div>
+
+            <div class="pt-2 flex items-center justify-end space-x-3 border-t border-white/10">
+                <button type="button" onclick="closeAssignModal()" class="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">
+                    Отмена
+                </button>
+                <button type="submit" class="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:scale-105 transition-all">
+                    ⚡ Назначить принудительно
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <script>
     function openSubmitModal(taskId, taskTitle) {
         document.getElementById('submitTaskForm').action = '/task/' + taskId + '/submit';
@@ -660,6 +760,25 @@
 
     function closeReworkModal() {
         const modal = document.getElementById('reworkModal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    function openAssignModal(taskId, taskTitle, direction, currentAssigneeId) {
+        const modal = document.getElementById('assignTaskModal');
+        if (!modal) return;
+        document.getElementById('assignTaskForm').action = '/task/' + taskId + '/assign';
+        document.getElementById('assignTaskTitle').textContent = '#' + taskId + ' — ' + taskTitle;
+        document.getElementById('assignTaskDirectionBadge').textContent = 'Цех: ' + direction;
+
+        const select = document.getElementById('assignUserSelect');
+        if (select) {
+            select.value = currentAssigneeId ? String(currentAssigneeId) : '';
+        }
+        modal.classList.remove('hidden');
+    }
+
+    function closeAssignModal() {
+        const modal = document.getElementById('assignTaskModal');
         if (modal) modal.classList.add('hidden');
     }
 </script>

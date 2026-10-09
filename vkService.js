@@ -238,6 +238,33 @@ async function notifyTaskAssigned(task, user) {
 }
 
 /**
+ * Notify assignee about forcefully assigned task from management
+ */
+async function notifyTaskForceAssigned(task, user, assignedBy, note = null) {
+  if (!user || !user.vk_id) return false;
+
+  const deadlineStr = task.deadline ? task.deadline.replace('T', ' ') : 'Не установлен';
+  const lines = [
+    '⚡ ВАМ ПРИНУДИТЕЛЬНО ВЫДАНА ЗАДАЧА!',
+    '━━━━━━━━━━━━━━━━━━',
+    `📌 Задача #${task.id}: «${task.title}»`,
+    `🎯 Цех: ${task.direction}`,
+    `👤 Назначил: ${assignedBy ? assignedBy.name : 'Руководство'} (${assignedBy ? assignedBy.role : 'Руководство'})`,
+    `⏰ Дедлайн: ${deadlineStr}`,
+    `📝 Техническое задание: ${task.description}`
+  ];
+
+  if (note && note.trim()) {
+    lines.push(`💬 Указание руководителя: ${note.trim()}`);
+  }
+
+  lines.push('━━━━━━━━━━━━━━━━━━');
+  lines.push('💡 Задача уже добавлена в ваш список «В работе». Нажмите «📋 Мои задачи» для просмотра.');
+
+  return await sendVkMessage(user.vk_id, lines.join('\n'));
+}
+
+/**
  * Notify all direction members about a new open task
  */
 async function notifyNewOpenTask(task) {
@@ -800,6 +827,7 @@ module.exports = {
   sendVkMessage,
   getMainKeyboard,
   notifyTaskAssigned,
+  notifyTaskForceAssigned,
   notifyNewOpenTask,
   notifyTaskRework,
   notifyTaskDeadlineChanged,

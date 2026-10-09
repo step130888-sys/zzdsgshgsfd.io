@@ -47,6 +47,19 @@
                         <span class="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-violet-500/15 text-violet-300 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]">
                             Уровень {{ profile_user.access_level }}
                         </span>
+
+                        <!-- Online Status Badge -->
+                        {% if is_online or (online_user_ids and profile_user.id in online_user_ids) %}
+                        <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.3)] animate-pulse" title="Пользователь сейчас на сайте">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+                            <span>В сети</span>
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-[#0B0F24] text-slate-400 border border-violet-500/20" title="Время последней активности">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                            <span>{{ last_seen_formatted or profile_user.last_seen_at|formatLastSeen }}</span>
+                        </span>
+                        {% endif %}
                     </div>
                     <div class="flex flex-wrap items-center gap-3 mt-2.5 text-xs text-slate-400 font-semibold">
                         <span class="text-sky-300 flex items-center space-x-1.5 bg-sky-500/10 px-2.5 py-0.5 rounded-lg border border-sky-500/20">
@@ -109,7 +122,7 @@
                     <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Статус в ОСО СГТУ</div>
                     <div class="text-xs font-extrabold text-violet-300 uppercase mt-0.5 bg-violet-500/15 px-3 py-1 rounded-full border border-violet-500/30 inline-block shadow-[0_0_12px_rgba(167,139,250,0.15)]">
                         {% if profile_user.access_level == 1 %}
-                            Участник актива {% if profile_user.can_create_tasks %}<span class="text-cyan-300 ml-1 font-black" title="Включен доступ к созданию задач в контент-плане">• КП Задачи ✅</span>{% endif %}
+                            Участник актива {% if profile_user.can_create_tasks %}<span class="text-cyan-300 ml-1 font-black" title="Включен доступ к созданию задач в контент-плане">• Контент план ✅</span>{% endif %}
                         {% elif profile_user.access_level == 2 %}Глава направления
                         {% elif profile_user.access_level == 3 %}Руководитель медиацентра
                         {% elif profile_user.access_level == 4 %}Администратор системы
@@ -118,6 +131,14 @@
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2 justify-start md:justify-end">
+                    {% if profile_user.id != current_user.id and (current_user.access_level >= 2 or current_user.can_create_tasks) %}
+                    <button type="button" onclick="openProfileAssignModal()"
+                            class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)] transition-all hover:scale-105"
+                            title="Принудительно выдать задачу этому сотруднику">
+                        <span>⚡ Выдать задачу</span>
+                    </button>
+                    {% endif %}
+
                     {% if profile_user.id == current_user.id %}
                     <button type="button" onclick="openAvatarModal()"
                             class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-500/40 shadow-[0_0_10px_rgba(139,92,246,0.2)] transition-all hover:scale-105">
@@ -895,6 +916,72 @@
     </div>
 </div>
 
+<!-- Modal: Force Assign Task to this Member in Profile -->
+{% if profile_user.id != current_user.id and (current_user.access_level >= 2 or current_user.can_create_tasks) %}
+<div id="profileAssignModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass-glow rounded-3xl max-w-lg w-full p-6 md:p-7 shadow-2xl border border-amber-500/40 text-white space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-white/10">
+            <div class="flex items-center space-x-2.5">
+                <span class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center text-base font-black shadow-[0_0_10px_rgba(245,158,11,0.3)]">
+                    ⚡
+                </span>
+                <div>
+                    <h3 class="text-base font-black text-white uppercase tracking-tight">Выдать задачу сотруднику</h3>
+                    <p class="text-[11px] text-slate-400 font-medium">Назначение для: <strong class="text-white">{{ profile_user.name }}</strong> ({{ profile_user.role }})</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeProfileAssignModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+        </div>
+
+        {% if open_tasks and open_tasks|length > 0 %}
+        <form action="/profile/{{ profile_user.id }}/assign-task" method="POST" class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1.5 flex items-center justify-between">
+                    <span>Выберите свободную задачу *</span>
+                    <span class="text-[10px] text-slate-400 font-normal">Свободных задач: {{ open_tasks|length }}</span>
+                </label>
+                <select name="task_id" required class="w-full text-xs font-bold px-3.5 py-3 bg-[#060814] border border-violet-500/30 rounded-2xl text-white focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30">
+                    <option value="">-- Выберите задачу из контент-плана --</option>
+                    {% for t in open_tasks %}
+                    <option value="{{ t.id }}">
+                        #{{ t.id }} «{{ t.title }}» ({{ t.direction }}) {% if t.deadline %}• Дедлайн: {{ t.deadline.replace('T', ' ') }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1">
+                    Указание / Комментарий сотруднику (необязательно)
+                </label>
+                <textarea name="comment" rows="2" placeholder="Например: Срочно в работу, сдать до завтра..."
+                          class="w-full text-xs px-3.5 py-2.5 bg-[#060814] border border-violet-500/30 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30"></textarea>
+                <span class="text-[10px] text-slate-400 mt-1 block">Указание отобразится в чате задачи и придет в боты сотрудника.</span>
+            </div>
+
+            <div class="pt-2 flex items-center justify-end space-x-3 border-t border-white/10">
+                <button type="button" onclick="closeProfileAssignModal()" class="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">
+                    Отмена
+                </button>
+                <button type="submit" class="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:scale-105 transition-all">
+                    ⚡ Назначить сотруднику
+                </button>
+            </div>
+        </form>
+        {% else %}
+        <div class="p-6 text-center text-slate-400 space-y-3">
+            <div class="text-3xl">📭</div>
+            <div class="text-xs font-bold text-slate-300">Сейчас нет свободных задач в цехе {{ profile_user.role }}</div>
+            <p class="text-[11px] text-slate-400">Вы можете создать новую задачу в Контент-плане и сразу назначить её на {{ profile_user.name }}.</p>
+            <a href="/content-plan" class="btn-neon inline-block text-white text-xs font-black px-4 py-2 rounded-xl mt-2">
+                Перейти в Контент-план →
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
 <script>
 function openProfileCompleteModal(taskId, taskTitle) {
     const modal = document.getElementById('profileCompleteModal');
@@ -1027,6 +1114,15 @@ function handleAvatarUrlInput(input) {
             previewFallback.classList.add('hidden');
         }
     }
+}
+function openProfileAssignModal() {
+    const modal = document.getElementById('profileAssignModal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeProfileAssignModal() {
+    const modal = document.getElementById('profileAssignModal');
+    if (modal) modal.classList.add('hidden');
 }
 </script>
 {% endblock %}

@@ -178,11 +178,22 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <!-- Assignee -->
                     <div class="cyber-glass bg-[#060814]/70 p-4.5 rounded-2xl border border-violet-500/20">
-                        <div class="text-xs text-slate-400 font-bold uppercase tracking-wider">Исполнитель:</div>
+                        <div class="flex items-center justify-between">
+                            <div class="text-xs text-slate-400 font-bold uppercase tracking-wider">Исполнитель:</div>
+                            {% if current_user.access_level >= 2 or current_user.can_create_tasks %}
+                            <button type="button" onclick="openAssignTaskModal()" class="text-xs font-black text-amber-300 hover:text-white bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 px-2.5 py-1 rounded-xl transition-all shadow-sm" title="Принудительно назначить или сменить сотрудника">
+                                ⚡ {{ 'Сменить' if task.assigned_to else 'Назначить' }}
+                            </button>
+                            {% endif %}
+                        </div>
                         {% if task.assigned_to %}
                         <div class="flex items-center space-x-3.5 mt-2.5">
                             <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#3B0764] via-[#6D28D9] to-[#0284C7] text-white flex items-center justify-center font-black text-base shadow-md flex-shrink-0 border border-violet-400/30">
-                                {{ task.assigned_to.name[0] }}
+                                {% if task.assigned_to.avatar_url %}
+                                <img src="{{ task.assigned_to.avatar_url }}" alt="{{ task.assigned_to.name }}" class="w-full h-full object-cover rounded-xl">
+                                {% else %}
+                                <span>{{ task.assigned_to.name[0] }}</span>
+                                {% endif %}
                             </div>
                             <div>
                                 <a href="/profile/{{ task.assigned_to.id }}" class="text-sm font-black text-white hover:text-cyan-300 hover:underline block leading-tight transition-colors">
@@ -196,11 +207,18 @@
                         {% else %}
                         <div class="mt-3 flex items-center justify-between">
                             <span class="text-xs text-slate-500 italic font-semibold">Свободная задача</span>
-                            <form action="/task/{{ task.id }}/take" method="POST">
-                                <button type="submit" class="btn-neon text-white text-xs font-extrabold px-3.5 py-1.5 rounded-xl shadow-md hover:scale-105 transition-all">
-                                    Взять задачу
+                            <div class="flex items-center space-x-2">
+                                <form action="/task/{{ task.id }}/take" method="POST">
+                                    <button type="submit" class="btn-neon text-white text-xs font-extrabold px-3.5 py-1.5 rounded-xl shadow-md hover:scale-105 transition-all">
+                                        Взять себе
+                                    </button>
+                                </form>
+                                {% if current_user.access_level >= 2 or current_user.can_create_tasks %}
+                                <button type="button" onclick="openAssignTaskModal()" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-black text-xs px-3 py-1.5 rounded-xl border border-amber-500/40 shadow-sm transition-all" title="Принудительно выдать задачу">
+                                    ⚡ Выдать
                                 </button>
-                            </form>
+                                {% endif %}
+                            </div>
                         </div>
                         {% endif %}
                     </div>
@@ -569,6 +587,72 @@
 </div>
 {% endif %}
 
+<!-- Modal: Force Assign Task in Task Detail -->
+{% if current_user.access_level >= 2 or current_user.can_create_tasks %}
+<div id="assignTaskModalDetail" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div class="cyber-glass-glow rounded-3xl max-w-lg w-full p-6 md:p-7 shadow-2xl border border-amber-500/40 text-white space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-white/10">
+            <div class="flex items-center space-x-2.5">
+                <span class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center text-base font-black shadow-[0_0_10px_rgba(245,158,11,0.3)]">
+                    ⚡
+                </span>
+                <div>
+                    <h3 class="text-base font-black text-white uppercase tracking-tight">Принудительная выдача задачи</h3>
+                    <p class="text-[11px] text-slate-400 font-medium">Сотрудник получит мгновенное уведомление в Telegram и VK</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeAssignTaskModal()" class="text-slate-400 hover:text-white text-lg font-bold">✕</button>
+        </div>
+
+        <form action="/task/{{ task.id }}/assign" method="POST" class="space-y-4">
+            <input type="hidden" name="redirect_to" value="/task/{{ task.id }}">
+
+            <div class="bg-[#060814]/90 p-3.5 rounded-2xl border border-violet-500/30 space-y-1">
+                <div class="text-[10px] uppercase font-black tracking-wider text-slate-400">Задача:</div>
+                <div class="text-sm font-black text-white leading-snug">#{{ task.id }} — {{ task.title }}</div>
+                <div class="text-xs text-cyan-300 font-bold">Цех: {{ task.direction }}</div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1.5 flex items-center justify-between">
+                    <span>Сотрудник для назначения *</span>
+                    <span class="text-[10px] text-slate-400 font-normal">Показана текущая нагрузка</span>
+                </label>
+                <select name="assigned_to_id" class="w-full text-xs font-bold px-3.5 py-3 bg-[#080B1C] border border-violet-500/30 rounded-2xl text-white focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30">
+                    <option value="">-- Выберите сотрудника --</option>
+                    {% if task.assigned_to_id %}
+                    <option value="" class="text-rose-400 font-bold">❌ Снять назначение (сделать свободной)</option>
+                    {% endif %}
+                    {% for u in assignable_users %}
+                    <option value="{{ u.id }}" {% if task.assigned_to_id == u.id %}selected{% endif %}>
+                        {{ u.name }} (Цех: {{ u.role }}, Ур. {{ u.access_level }}) • В работе: {{ u.active_tasks_count }} зад.
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold uppercase text-slate-300 mb-1">
+                    Указание / Комментарий исполнителю (необязательно)
+                </label>
+                <textarea name="comment" rows="2" placeholder="Например: Срочно в номер, съемка сегодня в 15:00 в 1 корпусе..."
+                          class="w-full text-xs px-3.5 py-2.5 bg-[#080B1C] border border-violet-500/30 rounded-2xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30"></textarea>
+                <span class="text-[10px] text-slate-400 mt-1 block">Отобразится в чате задачи и придет в боты сотрудника.</span>
+            </div>
+
+            <div class="pt-2 flex items-center justify-end space-x-3 border-t border-white/10">
+                <button type="button" onclick="closeAssignTaskModal()" class="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">
+                    Отмена
+                </button>
+                <button type="submit" class="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs px-5 py-2.5 rounded-xl shadow-[0_0_15px_rgba(245,158,11,0.3)] hover:scale-105 transition-all">
+                    ⚡ Назначить принудительно
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
 <!-- Client JavaScript for Mini-Chat & Modals -->
 <script>
     const TASK_ID = {{ task.id }};
@@ -739,6 +823,14 @@
     }
     function closeTaskDeadlineModal() {
         const modal = document.getElementById('taskDeadlineModal');
+        if (modal) modal.classList.add('hidden');
+    }
+    function openAssignTaskModal() {
+        const modal = document.getElementById('assignTaskModalDetail');
+        if (modal) modal.classList.remove('hidden');
+    }
+    function closeAssignTaskModal() {
+        const modal = document.getElementById('assignTaskModalDetail');
         if (modal) modal.classList.add('hidden');
     }
 </script>
